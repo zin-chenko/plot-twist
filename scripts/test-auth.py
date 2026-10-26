@@ -8,6 +8,7 @@ import os
 import secrets
 import subprocess
 import sys
+import time
 from html.parser import HTMLParser
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlparse, parse_qs
@@ -55,6 +56,9 @@ def check():
 def check_code_race():
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
+    # Refill the gateway's 5 req/s auth bucket before preparing and redeeming
+    # one code concurrently; 429 would measure ingress throttling, not code reuse.
+    time.sleep(2)
     exchange = user_grant(prepare_only=True)
     barrier = Barrier(4)
     def redeem(_):

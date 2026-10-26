@@ -126,6 +126,8 @@ docker compose down  # данные сохраняются; не добавля�
 
 ## Production и архитектура
 
+- [Структура backend, границы пакетов и правила разработки](docs/backend-structure.md).
+- Модули: [auth-service](auth-service/README.md), [api-service](api-service/README.md), [domain-service](domain-service/README.md).
 - [Production-развёртывание, секреты, TLS, резервные копии](docs/production.md).
 - [Авторизация и её границы](docs/auth.md).
 - [Решения по архитектуре и Kafka/RabbitMQ](docs/architecture.md).
