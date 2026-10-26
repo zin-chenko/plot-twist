@@ -18,7 +18,10 @@ final class SigningKeys {
     private SigningKeys() {}
 
     // Single-instance development issuer. Production keys should be provisioned/rotated externally.
-    static RSAKey loadOrCreate(Path path) throws Exception {
+    static RSAKey loadOrCreate(Path path) throws Exception { return load(path, true); }
+
+    static RSAKey load(Path path, boolean autoCreate) throws Exception {
+        if (!Files.exists(path) && !autoCreate) throw new IllegalStateException("Signing key must be provisioned before startup");
         if (!Files.exists(path)) {
             Files.createDirectories(path.getParent());
             var generator = KeyPairGenerator.getInstance("RSA");

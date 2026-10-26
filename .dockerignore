@@ -2,3 +2,7 @@
 **/target
 .idea
 .env
+.env.*
+secrets
+.credentials
+backups

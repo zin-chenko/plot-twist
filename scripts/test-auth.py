@@ -12,73 +12,7 @@ from html.parser import HTMLParser
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlparse, parse_qs
 from urllib.request import Request, build_opener, HTTPCookieProcessor, HTTPRedirectHandler, urlopen
-from auth_support import BASE, machine_token, token_request, bearer_request
-
-
-class NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-class CsrfParser(HTMLParser):
-    value = None
-
-    def handle_starttag(self, tag, attrs):
-        attrs = dict(attrs)
-        if tag == "input" and attrs.get("name") == "_csrf":
-            self.value = attrs["value"]
-
-
-def redirect(opener, request):
-    try:
-        with opener.open(request, timeout=15):
-            raise AssertionError("Expected OAuth redirect")
-    except HTTPError as error:
-        assert error.code == 302, f"Expected redirect, received HTTP {error.code}"
-        return error.headers["Location"]
-
-
-def expect_status(request, status, opener=None):
-    try:
-        with (opener.open(request, timeout=15) if opener else urlopen(request, timeout=15)) as response:
-            assert response.status == status, response.status
-    except HTTPError as error:
-        assert error.code == status, (error.code, status)
-
-
-def user_grant(scope="openid api.read"):
-    verifier = secrets.token_urlsafe(48)
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
-    state = secrets.token_urlsafe(24)
-    callback = os.getenv("AUTH_REDIRECT_URI", "http://127.0.0.1:18080/callback")
-    fields = {"response_type": "code", "client_id": "plot-twist-web", "redirect_uri": callback,
-              "scope": scope, "state": state, "code_challenge": challenge, "code_challenge_method": "S256"}
-    authorize = Request(BASE + "/oauth2/authorize?" + urlencode(fields), headers={"Accept": "text/html"})
-    opener = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()), NoRedirect())
-    login = redirect(opener, authorize)
-    assert urlparse(login).path == "/login", "Expected login form"
-    assert urlparse(login).netloc == urlparse(BASE).netloc, "Login escaped public gateway origin"
-    with opener.open(BASE + "/login", timeout=15) as response:
-        parser = CsrfParser()
-        parser.feed(response.read().decode())
-    assert parser.value, "Login form has no CSRF token"
-    credentials = {"username": os.getenv("AUTH_BOOTSTRAP_USERNAME", "demo"),
-                   "password": os.getenv("AUTH_BOOTSTRAP_PASSWORD", "local-demo-password"),
-                   "_csrf": parser.value}
-    # Login must reject a missing CSRF token.
-    expect_status(Request(BASE + "/login", data=urlencode({k: v for k, v in credentials.items() if k != "_csrf"}).encode()), 403, opener)
-    location = redirect(opener, Request(BASE + "/login", data=urlencode(credentials).encode()))
-    assert "error" not in parse_qs(urlparse(location).query), "User login failed"
-    location = redirect(opener, authorize)
-    result = parse_qs(urlparse(location).query)
-    assert result.get("state") == [state], "OAuth state mismatch"
-    assert "code" in result, "Authorization code was not issued"
-    exchange = {"grant_type": "authorization_code", "client_id": "plot-twist-web",
-                "redirect_uri": callback, "code": result["code"][0], "code_verifier": verifier}
-    tokens = token_request(exchange, basic=False)
-    if "id_token" in tokens:
-        expect_status(bearer_request("/api/story", tokens["id_token"]), 401)
-    return tokens, exchange
+from auth_support import BASE, machine_token, token_request, bearer_request, user_grant, expect_status
 
 
 def check():
@@ -118,6 +52,24 @@ def check():
     print("PASS: machine grant; user login + PKCE; CSRF; single-use code; token relay; 401/403; signature; public-only JWKS")
 
 
+def check_code_race():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    exchange = user_grant(prepare_only=True)
+    barrier = Barrier(4)
+    def redeem(_):
+        barrier.wait()
+        try:
+            token_request(exchange, basic=False)
+            return 200
+        except HTTPError as error:
+            return error.code
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(redeem, range(4)))
+    assert results.count(200) == 1 and all(code in (200, 400, 401) for code in results), results
+    print("PASS: concurrent code redemption permits exactly one successful exchange")
+
+
 def check_restart():
     token = machine_token()
     with urlopen(BASE + "/oauth2/jwks", timeout=15) as response:
@@ -140,5 +92,6 @@ def check_restart():
 
 if __name__ == "__main__":
     check()
+    check_code_race()
     if "--restart" in sys.argv:
         check_restart()

@@ -23,8 +23,10 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/**").hasAuthority("SCOPE_api.read")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/profile", "/api/v1/profile/photo").hasAuthority("SCOPE_api.write")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/profile", "/api/v1/profile/photo").hasAuthority("SCOPE_api.write")
                 .anyRequest().denyAll())
             .oauth2ResourceServer(resource -> resource.jwt(Customizer.withDefaults())).build();
     }

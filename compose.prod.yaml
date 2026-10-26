@@ -1,0 +1,128 @@
+# Requires Docker Compose >= 2.24.4 (!override / !reset).
+# Always use a separate production project and real secret files; see docs/production.md.
+services:
+  gateway:
+    build:
+      args:
+        TRUST_CONFIG: trusted-proxy.prod.conf
+    ports: !reset []
+  tls:
+    image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      edge:
+        ipv4_address: 172.30.0.10
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  postgres:
+    environment: !override
+      POSTGRES_USER: plot_twist
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/PGPASSWORD
+    secrets:
+      - source: pg_admin_password
+        target: PGPASSWORD
+    restart: unless-stopped
+    mem_limit: 1g
+  postgres-init:
+    environment: !override
+      PGPASSWORD_FILE: /run/secrets/PGPASSWORD
+    secrets:
+      - {source: pg_admin_password, target: PGPASSWORD}
+      - {source: auth_db_password, target: AUTH_DB_PASSWORD}
+      - {source: domain_db_password, target: DOMAIN_DB_PASSWORD}
+  auth-service:
+    environment: !override
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/auth
+      DB_USER: app_auth
+      AUTH_ISSUER: ${AUTH_ISSUER:?Set HTTPS AUTH_ISSUER}
+      AUTH_BOOTSTRAP_ENABLED: "false"
+      AUTH_MACHINE_CLIENT_ENABLED: "false"
+      AUTH_AUTO_CREATE_KEY: "false"
+      AUTH_SIGNING_KEY: /app/keys/signing.pk8
+      AUTH_REDIRECT_URI: ${AUTH_REDIRECT_URI:-http://127.0.0.1:18080/callback}
+      SERVER_SERVLET_SESSION_COOKIE_SECURE: "true"
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:?Set SMTP_USERNAME}
+      SMTP_AUTH: "true"
+      SMTP_STARTTLS: "true"
+      MAIL_FROM: ${MAIL_FROM:?Set MAIL_FROM}
+      TRACING_ENABLED: ${TRACING_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://localhost:4318/v1/traces}
+    volumes: !reset []
+    secrets:
+      - {source: auth_db_password, target: DB_PASSWORD}
+      - {source: smtp_password, target: SMTP_PASSWORD}
+      - {source: signing_key, target: /app/keys/signing.pk8}
+  api-service:
+    environment: !override
+      SPRING_PROFILES_ACTIVE: prod
+      DOMAIN_BASE_URL: http://domain-service:8080
+      AUTH_ISSUER: ${AUTH_ISSUER:?Set HTTPS AUTH_ISSUER}
+      AUTH_JWKS_URI: http://auth-service:8080/oauth2/jwks
+      TRACING_ENABLED: ${TRACING_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://localhost:4318/v1/traces}
+  domain-service:
+    environment: !override
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/profiles
+      DB_USER: app_domain
+      AUTH_ISSUER: ${AUTH_ISSUER:?Set HTTPS AUTH_ISSUER}
+      AUTH_JWKS_URI: http://auth-service:8080/oauth2/jwks
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:?Set S3_REGION}
+      S3_BUCKET: ${S3_BUCKET:?Set private S3_BUCKET}
+      S3_PATH_STYLE: ${S3_PATH_STYLE:-false}
+      TRACING_ENABLED: ${TRACING_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://localhost:4318/v1/traces}
+    secrets:
+      - {source: domain_db_password, target: DB_PASSWORD}
+      - {source: s3_access_key, target: S3_ACCESS_KEY}
+      - {source: s3_secret_key, target: S3_SECRET_KEY}
+    networks: !override [services, data, egress]
+    depends_on: !override
+      postgres-init: {condition: service_completed_successfully}
+      auth-service: {condition: service_healthy}
+  mailpit:
+    profiles: [development]
+    ports: !reset []
+  garage:
+    profiles: [development]
+  garage-init:
+    profiles: [development]
+networks:
+  edge:
+    ipam:
+      config: [{subnet: 172.30.0.0/24}]
+  egress: {}
+volumes:
+  caddy-data:
+  caddy-config:
+secrets:
+  pg_admin_password: {file: ./secrets/pg-admin-password}
+  auth_db_password: {file: ./secrets/auth-db-password}
+  domain_db_password: {file: ./secrets/domain-db-password}
+  smtp_password: {file: ./secrets/smtp-password}
+  signing_key: {file: ./secrets/signing.pk8}
+  s3_access_key: {file: ./secrets/s3-access-key}
+  s3_secret_key: {file: ./secrets/s3-secret-key}

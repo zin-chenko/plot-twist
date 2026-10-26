@@ -1,7 +1,14 @@
+x-log-config: &log-config
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 services:
   gateway:
+    logging: *log-config
     build:
-      context: ./docker/nginx
+      context: .
+      dockerfile: docker/nginx/Dockerfile
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
     read_only: true
@@ -10,6 +17,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     networks: [edge]
+    restart: unless-stopped
+    mem_limit: 128m
     depends_on:
       api-service:
         condition: service_healthy
@@ -22,6 +31,7 @@ services:
       retries: 10
     stop_grace_period: 30s
   postgres:
+    logging: *log-config
     image: postgres:17
     environment:
       POSTGRES_USER: plot_twist
@@ -37,31 +47,42 @@ services:
       timeout: 3s
       retries: 20
   postgres-init:
+    logging: *log-config
     image: postgres:17
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
-    command: ["psql", "-h", "postgres", "-U", "plot_twist", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-f", "/bootstrap/init.sql"]
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_dev_password}
+      DOMAIN_DB_PASSWORD: ${DOMAIN_DB_PASSWORD:-domain_dev_password}
+    command: ["sh", "/bootstrap/bootstrap.sh"]
     volumes:
-      - ./docker/postgres/init.sql:/bootstrap/init.sql:ro
+      - ./docker/postgres:/bootstrap:ro
     networks: [data]
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
   auth-service:
+    logging: *log-config
     build:
       context: .
       args:
         MODULE: auth-service
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/auth
-      DB_USER: plot_twist
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
+      DB_USER: app_auth
+      DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_dev_password}
       AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:8080}
       AUTH_BOOTSTRAP_USERNAME: ${AUTH_BOOTSTRAP_USERNAME:-demo}
       AUTH_BOOTSTRAP_PASSWORD: ${AUTH_BOOTSTRAP_PASSWORD:-local-demo-password}
       AUTH_CLIENT_SECRET: ${AUTH_CLIENT_SECRET:-local-client-secret}
       AUTH_REDIRECT_URI: ${AUTH_REDIRECT_URI:-http://127.0.0.1:18080/callback}
+      AUTH_BOOTSTRAP_ENABLED: "true"
+      AUTH_MACHINE_CLIENT_ENABLED: "true"
+      AUTH_AUTO_CREATE_KEY: "true"
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_AUTH: "false"
+      SMTP_STARTTLS: "false"
     volumes:
       - auth-keys:/app/keys
     networks: [edge, services, data]
@@ -69,7 +90,14 @@ services:
       postgres-init:
         condition: service_completed_successfully
     stop_grace_period: 30s
+    restart: unless-stopped
+    mem_limit: 768m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
   api-service:
+    logging: *log-config
     build:
       context: .
       args:
@@ -77,9 +105,6 @@ services:
     deploy:
       replicas: 2
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/story
-      DB_USER: plot_twist
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
       DOMAIN_BASE_URL: http://domain-service:8080
       AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:8080}
       AUTH_JWKS_URI: http://auth-service:8080/oauth2/jwks
@@ -90,25 +115,82 @@ services:
       domain-service:
         condition: service_healthy
     stop_grace_period: 30s
+    restart: unless-stopped
+    mem_limit: 512m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
   domain-service:
+    logging: *log-config
     build:
       context: .
       args:
         MODULE: domain-service
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/character
-      DB_USER: plot_twist
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
+      DB_URL: jdbc:postgresql://postgres:5432/profiles
+      DB_USER: app_domain
+      DB_PASSWORD: ${DOMAIN_DB_PASSWORD:-domain_dev_password}
       AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:8080}
       AUTH_JWKS_URI: http://auth-service:8080/oauth2/jwks
-    networks: [services, data]
+      S3_ENDPOINT: http://garage:3900
+      S3_REGION: garage
+      S3_BUCKET: plot-twist-profiles
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GK000000000000000000000000}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-1111111111111111111111111111111111111111111111111111111111111111}
+      S3_PATH_STYLE: "true"
+    networks: [services, data, storage]
     depends_on:
       postgres:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
     stop_grace_period: 30s
+    restart: unless-stopped
+    mem_limit: 768m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  mailpit:
+    logging: *log-config
+    image: axllent/mailpit:v1.27@sha256:e22dce5b36f93c77082e204a3942fb6b283b7896e057458400a4c88344c3df68
+    ports: ["127.0.0.1:${MAILPIT_PORT:-8025}:8025"]
+    networks: [edge]
+    mem_limit: 256m
+  garage:
+    logging: *log-config
+    image: plot-twist-garage
+    build: ./docker/garage
+    volumes: ["garage-data:/var/lib/garage"]
+    networks: [storage]
+    healthcheck:
+      test: ["CMD", "garage", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+  garage-init:
+    logging: *log-config
+    image: plot-twist-garage
+    pull_policy: never
+    command: ["sh", "/init.sh"]
+    volumes: ["garage-data:/var/lib/garage"]
+    environment:
+      S3_BUCKET: plot-twist-profiles
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GK000000000000000000000000}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-1111111111111111111111111111111111111111111111111111111111111111}
+    networks: [storage]
+    depends_on:
+      garage:
+        condition: service_healthy
+    restart: "no"
 networks:
+  storage:
+    internal: true
   edge:
   services:
     internal: true
@@ -117,3 +199,4 @@ networks:
 volumes:
   postgres-data:
   auth-keys:
+  garage-data:

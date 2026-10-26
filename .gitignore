@@ -3,3 +3,8 @@
 *.iml
 .env
 __pycache__/
+.env.*
+!.env.production.example
+secrets/
+.credentials/
+backups/

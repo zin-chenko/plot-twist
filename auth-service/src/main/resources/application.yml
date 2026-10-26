@@ -29,13 +29,42 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
 # Required settings are supplied by Compose. No fallback credentials outside local Compose.
 auth:
   issuer: ${AUTH_ISSUER:http://localhost:8080}
   signing-key: ${AUTH_SIGNING_KEY:/app/keys/signing.pk8}
   bootstrap:
-    username: ${AUTH_BOOTSTRAP_USERNAME}
-    password: ${AUTH_BOOTSTRAP_PASSWORD}
-  client-secret: ${AUTH_CLIENT_SECRET}
+    username: ${AUTH_BOOTSTRAP_USERNAME:}
+    password: ${AUTH_BOOTSTRAP_PASSWORD:}
+  client-secret: ${AUTH_CLIENT_SECRET:}
   redirect-uri: ${AUTH_REDIRECT_URI:http://127.0.0.1:18080/callback}
+spring.threads.virtual.enabled: true
+spring.jackson.deserialization.fail-on-unknown-properties: true
+spring.mvc.problemdetails.enabled: true
+logging.structured.format.console: ecs
+management.tracing.enabled: ${TRACING_ENABLED:false}
+management.tracing.sampling.probability: ${TRACING_SAMPLE_RATE:0.1}
+management.otlp.tracing.endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+server.error.include-message: never
+server.error.include-binding-errors: never
+server.error.include-stacktrace: never
+spring.config.import: optional:configtree:/run/secrets/
+auth.bootstrap.enabled: ${AUTH_BOOTSTRAP_ENABLED:false}
+auth.machine-client.enabled: ${AUTH_MACHINE_CLIENT_ENABLED:false}
+auth.auto-create-key: ${AUTH_AUTO_CREATE_KEY:false}
+auth.mail-from: ${MAIL_FROM:noreply@localhost}
+spring.session.jdbc.initialize-schema: never
+spring.session.timeout: 30m
+spring.mail.host: ${SMTP_HOST:localhost}
+spring.mail.port: ${SMTP_PORT:587}
+spring.mail.username: ${SMTP_USERNAME:}
+spring.mail.password: ${SMTP_PASSWORD:}
+spring.mail.properties.mail.smtp.auth: ${SMTP_AUTH:true}
+spring.mail.properties.mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+spring.mail.properties.mail.smtp.starttls.required: ${SMTP_STARTTLS:true}
+spring.mail.properties.mail.smtp.connectiontimeout: 3000
+spring.mail.properties.mail.smtp.timeout: 3000
+spring.mail.properties.mail.smtp.writetimeout: 3000
+spring.mail.properties.mail.smtp.ssl.enable: ${SMTP_SSL:false}
+spring.mail.properties.mail.smtp.ssl.checkserveridentity: true

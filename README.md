@@ -1,96 +1,113 @@
-# Plot Twist
+# Plot Twist — private profile API
 
-Java 21, Spring Boot 3.5.7, Maven Wrapper 3.9.11, PostgreSQL 17 и Nginx 1.28.
+Backend без отдельного frontend: регистрация, подтверждение email, вход OAuth2/OIDC, личные данные и приватное фото профиля.
 
 ```text
-Клиент -> gateway (Nginx :8080) -> auth-service (OAuth2 / OIDC, БД auth)
-            | round-robin
-            +-> api-service (2 экземпляра) -> domain-service
-                     |                            |
-                  БД story                  БД character
-                     +-------- PostgreSQL --------+
+                         ┌─ auth-service ─ PostgreSQL/auth
+Client → gateway/Nginx ──┤                  users, sessions, codes, email outbox
+                         └─ api-service ×2 → domain-service ─ PostgreSQL/profiles
+                                                   └───── private S3 objects
 ```
 
-`auth-service` — отдельный Spring Authorization Server: вход пользователей и выпуск JWT. `api-service` — основной backend, `domain-service` — внутренний сервис предметной логики. Оба backend проверяют JWT локально: подпись, issuer, audience, время действия и scope `api.read`. Без токена `/api/*` возвращает 401, без нужного scope — 403. `/api/story` возвращает информацию об API, `/api/character` проходит цепочку gateway → API → domain с передачей access token, `/api/me` показывает subject из проверенного JWT. Предметные таблицы пока не реализованы.
+Java 25 LTS, Spring Boot 3.5.16, Spring Authorization Server, JDBC/Flyway, Argon2id, virtual threads, AWS SDK v2, OpenAPI 3.1, Micrometer/Prometheus и OpenTelemetry. API — stateless; login-сессии auth хранятся в PostgreSQL. Сервис API не имеет собственной базы данных.
 
-Схема входа, OAuth-клиенты, локальные учётные данные и ограничения описаны в [docs/auth.md](docs/auth.md).
+## Запуск локально
 
-## Запуск
-
-Нужны Docker Engine / Docker Desktop и Docker Compose v2. Java и Maven на хосте не требуются.
+Нужны Docker и Docker Compose ≥ 2.24.4, для CLI и проверок — Python 3 без сторонних пакетов.
 
 ```sh
-docker compose up -d --build --wait --remove-orphans
+docker compose up -d --build --wait --wait-timeout 180
 python3 scripts/smoke-test.py
 python3 scripts/test-auth.py
-docker compose logs -f gateway api-service domain-service auth-service
+python3 scripts/test-profile.py
 ```
 
-`--remove-orphans` удаляет старые контейнеры `story-service` / `character-service` после переименования модулей. Данные PostgreSQL сохраняются: имена баз `story` / `character` и том `postgres-data` оставлены прежними.
+Публичный вход: `http://localhost:8080`. Контракт: `docs/openapi.json` и HTTP `/openapi.json`. Приложение не публикует порты PostgreSQL, auth, domain и S3. `postgres-init` и `garage-init` должны завершиться с кодом 0; остальные контейнеры — быть healthy.
 
-Единственный опубликованный порт — gateway на `127.0.0.1:8080`. `/api/*` — защищённый JSON API, пользовательского интерфейса пока нет. Стандартная форма входа обслуживается auth-сервисом в OAuth2 flow. Smoke-тест сам получает машинный токен и проверяет цепочку сервисов.
+**Локальные письма попадают в Mailpit на `http://localhost:8025`, а не во внешний почтовый ящик.** Локальное S3-хранилище — Garage с сохраняемым томом. Production использует реальный SMTP и внешний приватный S3 bucket; Mailpit/Garage в production-композиции выключены.
+
+## Зарегистрироваться и пользоваться API
 
 ```sh
-curl --fail http://localhost:8080/readyz
-curl -i http://localhost:8080/api/story  # ожидается 401 без токена
-docker compose ps
-docker compose down  # сохранить данные
+python3 scripts/client.py register me@example.com
+# Возьмите одноразовый код из письма в Mailpit:
+python3 scripts/client.py verify
+python3 scripts/client.py login
 ```
 
-`/healthz` проверяет только Nginx. `/readyz` проверяет один выбранный экземпляр API и его соединение с БД; состояние domain проверяется сквозным `/api/character` и собственным Docker healthcheck. Произвольные `/actuator/*` снаружи недоступны. Smoke-тест проверяет API, вызов domain, готовность API с БД, request ID и распределение запросов минимум между двумя экземплярами.
+`login` открывает стандартную форму auth в браузере, выполняет Authorization Code + PKCE и принимает callback на loopback-порту 18080. Это native OAuth-клиент, отдельный frontend не нужен. Запускайте CLI на компьютере с вашим браузером. Пароль не сохраняется; access token хранится в `.credentials/session.json` с правами 0600. Для удалённого API передайте `--url https://ваш-домен` **до** команды.
 
-## Gateway и балансировка
+Создайте `.credentials/profile.json`:
 
-Конфигурация: `docker/nginx/nginx.conf`. Она включена в образ gateway: после изменения выполните `docker compose up -d --build --wait`, чтобы Compose пересоздал gateway с новой конфигурацией. Nginx выполняет сразу две роли: маршрутизацию публичного API и балансировку между экземплярами основного backend. Отдельный Java gateway и сервис регистрации пока не нужны.
+```json
+{
+  "displayName": "Alex",
+  "givenName": "Alex",
+  "familyName": null,
+  "bio": "About me",
+  "birthDate": "1990-01-02"
+}
+```
 
-- Round-robin использует DNS Docker, `resolver 127.0.0.11` и динамический upstream `resolve` с обновлением раз в 5 секунд. После масштабирования или замены контейнеров reload Nginx не нужен. Sticky sessions для API не используются. Auth сейчас запускается в одном экземпляре; его login-сессии пока локальные.
-- Между gateway и API сохраняются соединения. Таймаут подключения — 2 с, чтения — 10 с; у API → domain — 2 / 5 с. Это стартовые значения, их следует подобрать по SLO и измерениям.
-- Пассивная проверка исключает upstream после двух ошибок на 5 с. Повторы ограничены двумя попытками и окном 5 с; автоматическое повторение отправленных неидемпотентных запросов не включено. Отказавший backend не исключается заранее по Docker healthcheck: отдельные запросы во время отказа могут завершиться ошибкой.
-- Лимит тела — 1 MiB. Ограничение API — 50 запросов в секунду на IP с burst 100, для auth-маршрутов — 5 в секунду с burst 20; превышение возвращает 429. Это локальный лимит одного Nginx, не глобальная квота пользователя; NAT объединяет пользователей под одним IP.
-- Gateway генерирует `X-Request-ID`, передаёт его API → domain и пишет upstream, статусы и время в access log. Query strings исключены из access log, OAuth/login-маршруты не пишутся туда, токены и пароли не логируются приложением. Клиентские forwarding-заголовки перезаписываются. `X-Backend-Instance` на `/api/story` служит диагностикой балансировки, его стоит убрать из публичного production API.
-- Nginx работает без root, с read-only filesystem и временными файлами в tmpfs. Spring использует graceful shutdown; Compose даёт 30 с на остановку.
+```sh
+python3 scripts/client.py profile-put .credentials/profile.json
+python3 scripts/client.py profile
+python3 scripts/client.py photo-put /path/to/photo.png
+python3 scripts/client.py photo-get .credentials/avatar.jpg
+python3 scripts/client.py photo-delete
+python3 scripts/client.py delete-profile
+```
 
-Backend и PostgreSQL не публикуют порты хоста. Gateway, API и auth соединены сетью `edge`; API, domain и auth — внутренней `services`; доступ к БД — через внутреннюю `data`. Gateway не включён в сети domain/БД. Auth публикует только публичные ключи через `/oauth2/jwks`, закрытый ключ хранится в томе `auth-keys`. Это сетевое разделение, а не замена аутентификации сервисов.
+Для прямых HTTP-запросов: `TOKEN=$(python3 scripts/client.py token)` и заголовок `Authorization: Bearer $TOKEN`. Не помещайте токен в URL, логи или Git. Запись профиля требует `If-Match` с текущим ETag; первоначальное создание — `If-None-Match: *`. CLI делает это автоматически. Без версионного условия — 428, при конфликте — 412. После истечения пятиминутного access token повторите `login`; действующая браузерная login-сессия позволяет не вводить пароль заново.
 
-## Масштабирование
+Профиль появляется при первом PUT, не при регистрации. UUID владельца берётся исключительно из проверенного JWT. Машинный grant не получает доступа к личным профилям. Пользователь может прочитать и изменить только свой профиль; API не принимает владельца в теле запроса.
+
+Фото: JPEG/PNG, до 5 MiB и 16 MP. Сервер проверяет формат, ограничивает декодирование, удаляет исходные метаданные и преобразует изображение в JPEG до 1024 px. В PostgreSQL хранятся метаданные и связь с владельцем, байты — в S3. Публичных URL bucket нет; скачивание требует JWT. Старые и неудачные объекты удаляются отложенным сборщиком.
+
+## Доступ и восстановление
+
+```sh
+python3 scripts/client.py resend me@example.com
+python3 scripts/client.py forgot me@example.com
+# Код из нового письма:
+python3 scripts/client.py reset
+python3 scripts/client.py logout
+```
+
+Подтверждение и reset используют одноразовые коды на 30 минут. В БД хранится хеш кода; письмо отправляется после коммита через transactional outbox. Повторная отправка ограничена, ответы для неизвестных/существующих email одинаковые. Reset удаляет login-сессии и issuer-side authorizations. Уже выпущенный JWT может оставаться действительным до окончания TTL с учётом clock skew. `logout` CLI удаляет локальный токен; это не немедленный глобальный отзыв JWT.
+
+## Проверки и эксплуатация
+
+```sh
+python3 scripts/test-auth.py --restart    # временно останавливает auth, только в dev
+python3 scripts/test-resilience.py      # масштабирует/останавливает сервисы, только в dev
+python3 scripts/test-backup-restore.py  # восстанавливает копии в новые временные БД
+python3 scripts/test-profile.py --benchmark
+```
+
+Для небольшого read-теста вашего существующего профиля после CLI login:
+
+```sh
+python3 scripts/benchmark.py --rps 20 --seconds 15
+```
+
+Это проверка одного ограниченного сценария, а не измерение предельной нагрузки. Выбирайте целевые RPS, p95/p99 и бюджет ошибок до capacity-тестов. Метрики доступны на приватных `/actuator/prometheus`; пример DNS discovery для всех реплик — `monitoring/prometheus.yml`. Для экспорта трасс включите `TRACING_ENABLED` и задайте OTLP endpoint своего collector. Логи приложений — ECS JSON без тел запросов и паролей; локальные Docker-логи ограничены по объёму.
+
+`/healthz` проверяет Nginx; `/readyz` — выбранный API. Готовность domain учитывает его БД; S3 имеет отдельный health component, поэтому сбой фото-хранилища не отключает редактирование текстовых полей профиля. Сквозной smoke проверяет зависимости отдельно.
 
 ```sh
 docker compose up -d --no-build --scale api-service=3 --wait
 EXPECTED_API_INSTANCES=3 python3 scripts/smoke-test.py
-# Вернуть базовые два экземпляра:
-docker compose up -d --no-build --scale api-service=2 --wait
+docker compose down  # данные сохраняются; не добавляйте -v, если они нужны
 ```
 
-HikariCP ограничен 10 соединениями на JVM. Общий бюджет БД рассчитывается по всем экземплярам всех сервисов с запасом для администрирования. Горизонтальное масштабирование API не масштабирует автоматически PostgreSQL и domain. Масштабирование domain потребует отдельно продуманного клиентского балансировщика.
+## Production и архитектура
 
-## Проверка отказа (локальная среда)
+- [Production-развёртывание, секреты, TLS, резервные копии](docs/production.md).
+- [Авторизация и её границы](docs/auth.md).
+- [Решения по архитектуре и Kafka/RabbitMQ](docs/architecture.md).
+- [Результаты аудита](docs/audit.md).
 
-Автоматическая проверка (только в локальной тестовой среде, после основного запуска):
+Production-файл — `compose.prod.yaml`: TLS через Caddy, закрытый gateway, внешние SMTP/S3, отключённые demo-переключатели, секреты из файлов и проверки конфигурации при старте. Это вариант для одного Linux-хоста, **не** отказоустойчивый кластер. Публичное развёртывание требует выбранной площадки, DNS, реальных секретов и проверенных backup/restore и мониторинга; само добавление YAML этого не выполняет.
 
-```sh
-python3 scripts/test-resilience.py
-```
-
-Она временно запускает третий API, проверяет обнаружение без перезапуска gateway, останавливает один API, проверяет восстановление маршрутизации за 20 секунд, затем проверяет ответ 503 при остановленном domain. В конце возвращает два API и запускает остановленные сервисы; данные БД сохраняются. Во время смены DNS допускаются кратковременные 502/504; тест требует после этого 12 успешных запросов подряд. Это проверка восстановления, а не гарантия отсутствия потерянных запросов. Для обновлений без простоя нужны предварительный вывод экземпляров из балансировки и активные health/readiness checks со стороны production-балансировщика.
-
-После запуска можно остановить один API-контейнер и убедиться, что gateway продолжает обслуживать запросы вторым. Обязательно запустите остановленный контейнер после проверки. При остановке domain `/api/character` должен вернуть 503, а `/api/story` продолжит работать. Данные БД не удаляйте.
-
-## Конфигурация и разработка
-
-Необязательно скопируйте `.env.example` в `.env`. Настройки: `GATEWAY_PORT`, `POSTGRES_PASSWORD` и `AUTH_*` из `.env.example`. При смене публичного адреса/порта задайте соответствующий `AUTH_ISSUER`. Пример содержит локальные demo-пароли/секреты, `.env` исключён из Git и Docker build context. Для изменённых портов smoke-тесту нужен `GATEWAY_PORT` в окружении либо полный `GATEWAY_URL` (Compose сам читает `.env`, Python — нет).
-
-Базы создаются идемпотентным `docker/postgres/init.sql`: при создании PostgreSQL и одноразовым сервисом `postgres-init` для обновления существующего тома. Успешное состояние `postgres-init` — `Exited (0)`. Схему auth обновляет Flyway. Изменение переменной пароля не меняет пароль в существующей БД. `docker compose down -v` удалит данные — используйте только осознанно. Для SQL-диагностики: `docker compose exec postgres psql -U plot_twist -d story`.
-
-Для сборки вне Docker нужен **JDK 21**:
-
-```sh
-./mvnw verify
-```
-
-На Windows — `mvnw.cmd`. Для запуска JVM вне Compose PostgreSQL и domain должны быть доступны по адресам `DB_URL` и `DOMAIN_BASE_URL`; стандартная конфигурация Compose намеренно не открывает им порты хоста. Необязательные BuildKit secrets `maven_settings` и `java_cacerts` позволяют настроить доверенный proxy/mirror без отключения проверки TLS.
-
-## Путь к production / high-load
-
-Compose здесь — среда разработки на одной машине, а один Nginx и один PostgreSQL остаются точками отказа. Для production рекомендуемая схема: DNS → управляемый L4/L7 load balancer с TLS → несколько gateway на разных узлах → экземпляры API → domain. Нужны отказоустойчивость PostgreSQL и резервные копии, метрики p95/p99, ошибки, пулы и нагрузочные тесты.
-
-TLS-сертификаты и публичный домен в этом примере не настроены: HTTP слушает только loopback. Если TLS завершается на внешнем load balancer, доверять forwarding-заголовкам можно лишь от его известных адресов; текущая конфигурация рассчитана на прямое обращение к gateway. Ограничение частоты следует перенести или согласовать на внешнем балансировщике, либо реализовать распределённые квоты. Перед публикацией настройте HTTPS, собственные секреты и OAuth-клиентов; локальные demo-значения не подходят для production. Масштабирование auth потребует общего хранилища login-сессий и управляемой ротации ключей. Пользователи БД сейчас общие и предназначены для локальной разработки; для production нужны отдельные роли и секреты.
+CI строит образы с Java-тестами и выполняет контрактные, интеграционные и restore-проверки. Образы базовых runtime закреплены digest, обновления зависимостей предлагаются Dependabot.

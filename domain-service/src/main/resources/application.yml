@@ -2,7 +2,7 @@ spring:
   application:
     name: domain-service
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/character}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/profiles}
     username: ${DB_USER:plot_twist}
     password: ${DB_PASSWORD:plot_twist_local}
 management:
@@ -16,7 +16,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,prometheus
 server:
   shutdown: graceful
 spring.lifecycle.timeout-per-shutdown-phase: 20s
@@ -25,3 +25,22 @@ spring.datasource.hikari.connection-timeout: 3000
 auth:
   issuer: ${AUTH_ISSUER:http://localhost:8080}
   jwks-uri: ${AUTH_JWKS_URI:http://localhost:8083/oauth2/jwks}
+spring.threads.virtual.enabled: true
+spring.jackson.deserialization.fail-on-unknown-properties: true
+spring.mvc.problemdetails.enabled: true
+logging.structured.format.console: ecs
+management.tracing.enabled: ${TRACING_ENABLED:false}
+management.tracing.sampling.probability: ${TRACING_SAMPLE_RATE:0.1}
+management.otlp.tracing.endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+server.error.include-message: never
+server.error.include-binding-errors: never
+server.error.include-stacktrace: never
+spring.config.import: optional:configtree:/run/secrets/
+storage:
+  endpoint: ${S3_ENDPOINT:}
+  region: ${S3_REGION:us-east-1}
+  bucket: ${S3_BUCKET:plot-twist-profiles}
+  access-key: ${S3_ACCESS_KEY:}
+  secret-key: ${S3_SECRET_KEY:}
+  path-style: ${S3_PATH_STYLE:false}
+storage.use-environment-proxy: ${S3_USE_ENVIRONMENT_PROXY:false}

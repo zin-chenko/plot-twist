@@ -1,10 +1,6 @@
 spring:
   application:
     name: api-service
-  datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/story}
-    username: ${DB_USER:plot_twist}
-    password: ${DB_PASSWORD:plot_twist_local}
 management:
   endpoint:
     health:
@@ -12,17 +8,26 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,db
+          include: readinessState
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,prometheus
 server:
   shutdown: graceful
 spring.lifecycle.timeout-per-shutdown-phase: 20s
-spring.datasource.hikari.maximum-pool-size: 10
-spring.datasource.hikari.connection-timeout: 3000
 domain.base-url: ${DOMAIN_BASE_URL:http://localhost:8082}
 auth:
   issuer: ${AUTH_ISSUER:http://localhost:8080}
   jwks-uri: ${AUTH_JWKS_URI:http://localhost:8083/oauth2/jwks}
+spring.threads.virtual.enabled: true
+spring.jackson.deserialization.fail-on-unknown-properties: true
+spring.mvc.problemdetails.enabled: true
+logging.structured.format.console: ecs
+management.tracing.enabled: ${TRACING_ENABLED:false}
+management.tracing.sampling.probability: ${TRACING_SAMPLE_RATE:0.1}
+management.otlp.tracing.endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+server.error.include-message: never
+server.error.include-binding-errors: never
+server.error.include-stacktrace: never
+spring.config.import: optional:configtree:/run/secrets/
