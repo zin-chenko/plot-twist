@@ -1,32 +1,51 @@
 #!/usr/bin/env python3
-"""Check both HTTP APIs and database-backed readiness (Python 3, no dependencies)."""
+"""Validate the public gateway, service chain and balancing (Python 3)."""
 import json
 import os
 import time
-from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+BASE = os.getenv("GATEWAY_URL", "http://127.0.0.1:" + os.getenv("GATEWAY_PORT", "8080"))
+EXPECTED = int(os.getenv("EXPECTED_API_INSTANCES", "2"))
 
 
-def read(url):
-    with urlopen(url, timeout=3) as response:
-        return json.load(response)
+def request(path, headers=None):
+    with urlopen(Request(BASE + path, headers=headers or {}), timeout=15) as response:
+        return response.read(), response.headers
 
 
-for name, port in (("story", os.getenv("STORY_PORT", "8081")),
-                   ("character", os.getenv("CHARACTER_PORT", "8082"))):
-    base = f"http://127.0.0.1:{port}"
+def check():
+    body, _ = request("/readyz")
+    assert json.loads(body)["status"] == "UP", body
+    instances = set()
+    for _ in range(24):
+        body, headers = request("/api/story", {"X-Request-ID": "untrusted-client-value"})
+        assert json.loads(body) == {"service": "api-service", "status": "running"}, body
+        assert headers["X-Request-ID"] and headers["X-Request-ID"] != "untrusted-client-value"
+        assert headers["X-Backend-Instance"], "Missing backend identity"
+        instances.add(headers["X-Backend-Instance"])
+        time.sleep(0.03)
+    assert len(instances) >= EXPECTED, f"Expected {EXPECTED} backends, got {instances}"
+    body, _ = request("/api/character")
+    assert json.loads(body) == {"service": "domain-service", "status": "running"}, body
+    for path in ("/actuator/health", "/unknown"):
+        try:
+            request(path)
+        except HTTPError as error:
+            assert error.code == 404, (path, error.code)
+        else:
+            raise AssertionError(f"Unexpected public route: {path}")
+    print(f"Gateway OK; {len(instances)} API replicas; API -> domain OK; actuator blocked")
+
+
+if __name__ == "__main__":
     deadline = time.monotonic() + 90
     while True:
         try:
-            health = read(base + "/actuator/health/readiness")
-            if health.get("status") != "UP":
-                raise ValueError(f"Unexpected readiness: {health}")
-            info = read(base + f"/api/{name}")
-            if info != {"service": f"{name}-service", "status": "running"}:
-                raise ValueError(f"Unexpected API response: {info}")
-            print(f"{name}-service: API and PostgreSQL readiness OK")
+            check()
             break
-        except (URLError, OSError, ValueError) as error:
+        except (URLError, OSError, AssertionError, ValueError) as error:
             if time.monotonic() >= deadline:
-                raise SystemExit(f"{name}-service failed: {error}") from error
-            time.sleep(1)
+                raise SystemExit(f"Gateway smoke test failed: {error}") from error
+            time.sleep(2)

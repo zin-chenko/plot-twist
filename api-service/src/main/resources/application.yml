@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: api-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/story}
+    username: ${DB_USER:plot_twist}
+    password: ${DB_PASSWORD:plot_twist_local}
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+server:
+  shutdown: graceful
+spring.lifecycle.timeout-per-shutdown-phase: 20s
+spring.datasource.hikari.maximum-pool-size: 10
+spring.datasource.hikari.connection-timeout: 3000
+domain.base-url: ${DOMAIN_BASE_URL:http://localhost:8082}

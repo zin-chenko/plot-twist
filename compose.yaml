@@ -1,47 +1,80 @@
 services:
+  gateway:
+    image: nginx:1.28-alpine
+    user: "101:101"
+    entrypoint: ["nginx", "-g", "daemon off;"]
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [edge]
+    depends_on:
+      api-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-Y", "off", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 30s
   postgres:
     image: postgres:17
     environment:
       POSTGRES_USER: plot_twist
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
       POSTGRES_DB: postgres
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
+    networks: [data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U plot_twist -d postgres"]
       interval: 5s
       timeout: 3s
       retries: 20
-  story-service:
+  api-service:
     build:
       context: .
       args:
-        MODULE: story-service
+        MODULE: api-service
+    deploy:
+      replicas: 2
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/story
       DB_USER: plot_twist
       DB_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
-    ports:
-      - "127.0.0.1:${STORY_PORT:-8081}:8080"
+      DOMAIN_BASE_URL: http://domain-service:8080
+    networks: [edge, services, data]
     depends_on:
       postgres:
         condition: service_healthy
-  character-service:
+      domain-service:
+        condition: service_healthy
+    stop_grace_period: 30s
+  domain-service:
     build:
       context: .
       args:
-        MODULE: character-service
+        MODULE: domain-service
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/character
       DB_USER: plot_twist
       DB_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
-    ports:
-      - "127.0.0.1:${CHARACTER_PORT:-8082}:8080"
+    networks: [services, data]
     depends_on:
       postgres:
         condition: service_healthy
+    stop_grace_period: 30s
+networks:
+  edge:
+  services:
+    internal: true
+  data:
+    internal: true
 volumes:
   postgres-data:
