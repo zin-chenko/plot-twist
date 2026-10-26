@@ -47,7 +47,7 @@ docker compose up -d --build --wait --wait-timeout 180
 
 Фронтенд находится в отдельном проекте `plot-twist-web`. После обновления backend выполните `docker compose up -d --build --wait --wait-timeout 180`, чтобы auth-service зарегистрировал браузерный клиент `plot-twist-browser`. В папке фронтенда: `npm ci` и `npm start`, затем откройте **http://localhost:4200**. Альтернатива без Node на хосте: `docker compose up -d --build --wait` из папки фронтенда; backend должен быть уже запущен и иметь сеть `plot-twist_edge`.
 
-Для браузера используется отдельный Authorization Code + PKCE клиент с callback `http://localhost:4200/auth/callback`, для CLI сохраняется прежний `plot-twist-web` и loopback callback. Параметр `AUTH_BROWSER_REDIRECT_URI` меняет точный браузерный callback; адрес завершения logout — тот же origin и `/signed-out`. В production нужен HTTPS callback. Frontend proxy отправляет API и auth-пути на gateway, поэтому CORS не требуется. `GET /default-ui.css` проксирует стили формы входа auth-service.
+Для браузера используется отдельный Authorization Code + PKCE клиент с callback `http://localhost:4200/auth/callback`, для CLI сохраняется прежний `plot-twist-web` и loopback callback. В локальном HTTP-режиме регистрируются два точных callback: для `localhost` и `127.0.0.1`, с теми же портом и путём. Параметр `AUTH_BROWSER_REDIRECT_URI` меняет браузерный callback; адрес завершения logout — тот же origin и `/signed-out`. В production нужен точный HTTPS callback, без автоматических алиасов. Frontend proxy отправляет API и auth-пути на gateway, поэтому CORS не требуется. Фронтенд может отдавать собственные стили `/default-ui.css` для формы auth-service.
 
 ### CLI
 

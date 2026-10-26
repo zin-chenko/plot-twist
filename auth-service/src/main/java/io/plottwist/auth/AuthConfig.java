@@ -23,6 +23,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.*;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.authorization.*;
+import org.springframework.security.oauth2.server.authorization.authentication.*;
 import org.springframework.security.oauth2.server.authorization.client.*;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
@@ -38,9 +39,14 @@ public class AuthConfig {
     @Bean @Order(1)
     SecurityFilterChain authorizationServer(HttpSecurity http, AuthWorkLimiter limiter, TokenEndpointTransactions tokenTransactions) throws Exception {
         var server = OAuth2AuthorizationServerConfigurer.authorizationServer();
+        java.util.function.Consumer<OAuth2AuthorizationCodeRequestAuthenticationContext> browserRedirect = AuthConfig::validateBrowserRedirect;
         return http.addFilterBefore(limiter, org.springframework.security.web.context.SecurityContextHolderFilter.class)
             .addFilterAfter(tokenTransactions, AuthWorkLimiter.class).securityMatcher(server.getEndpointsMatcher())
-            .with(server, authorization -> authorization.oidc(Customizer.withDefaults()))
+            .with(server, authorization -> authorization.oidc(Customizer.withDefaults())
+                .authorizationEndpoint(endpoint -> endpoint.authenticationProviders(providers -> providers.forEach(provider -> {
+                    if (provider instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider codeRequests)
+                        codeRequests.setAuthenticationValidator(browserRedirect.andThen(new OAuth2AuthorizationCodeRequestAuthenticationValidator()));
+                }))))
             .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
             .oauth2ResourceServer(resource -> resource.jwt(Customizer.withDefaults()))
             .exceptionHandling(errors -> errors.defaultAuthenticationEntryPointFor(
@@ -159,20 +165,39 @@ public class AuthConfig {
         };
     }
 
+    static void validateBrowserRedirect(OAuth2AuthorizationCodeRequestAuthenticationContext context) {
+        if ("plot-twist-browser".equals(context.getRegisteredClient().getClientId())) {
+            OAuth2AuthorizationCodeRequestAuthenticationToken request = context.getAuthentication();
+            if (!context.getRegisteredClient().getRedirectUris().contains(request.getRedirectUri()))
+                // No authentication result: the error handler must never redirect to an untrusted URI.
+                throw new OAuth2AuthorizationCodeRequestAuthenticationException(
+                    new OAuth2Error(OAuth2ErrorCodes.INVALID_REQUEST, "Invalid redirect_uri", null), null);
+        }
+    }
+
     static RegisteredClient browserClient(String redirectUri) {
         var uri = java.net.URI.create(redirectUri);
         if (!("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
                 || uri.getHost() == null || uri.getUserInfo() != null
                 || uri.getQuery() != null || uri.getFragment() != null)
             throw new IllegalArgumentException("Browser redirect must be an absolute HTTP(S) URL without query or fragment");
-        return RegisteredClient.withId("plot-twist-browser").clientId("plot-twist-browser")
+        var client = RegisteredClient.withId("plot-twist-browser").clientId("plot-twist-browser")
             .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
             .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
             .redirectUri(redirectUri)
             .postLogoutRedirectUri(uri.resolve("/signed-out").toString())
             .scope("openid").scope("api.read").scope("api.write")
             .clientSettings(ClientSettings.builder().requireProofKey(true).requireAuthorizationConsent(false).build())
-            .tokenSettings(TokenSettings.builder().accessTokenTimeToLive(Duration.ofMinutes(5)).build()).build();
+            .tokenSettings(TokenSettings.builder().accessTokenTimeToLive(Duration.ofMinutes(5)).build());
+        // Two exact loopback origins for local development; never wildcard production redirects.
+        String aliasHost = "localhost".equalsIgnoreCase(uri.getHost()) ? "127.0.0.1"
+            : "127.0.0.1".equals(uri.getHost()) ? "localhost" : null;
+        if ("http".equals(uri.getScheme()) && aliasHost != null) {
+            var alias = java.net.URI.create("http://" + aliasHost
+                + (uri.getPort() == -1 ? "" : ":" + uri.getPort()) + uri.getRawPath());
+            client.redirectUri(alias.toString()).postLogoutRedirectUri(alias.resolve("/signed-out").toString());
+        }
+        return client.build();
     }
 
     @Bean
