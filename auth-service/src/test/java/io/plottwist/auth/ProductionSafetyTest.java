@@ -29,6 +29,7 @@ class ProductionSafetyTest {
     @Test
     void refusesDevelopmentIssuerAndBootstrap() throws Exception {
         assertThrows(IllegalStateException.class, () -> ProductionSafety.validate(config().withProperty("auth.issuer", "http://example.test")));
+        assertThrows(IllegalStateException.class, () -> ProductionSafety.validate(config().withProperty("auth.browser-redirect-uri", "http://app.example.test/auth/callback")));
         assertThrows(IllegalStateException.class, () -> ProductionSafety.validate(config().withProperty("auth.bootstrap.enabled", "true")));
         assertThrows(IllegalStateException.class, () -> ProductionSafety.validate(config().withProperty("auth.auto-create-key", "true")));
         assertThrows(IllegalStateException.class, () -> ProductionSafety.validate(config().withProperty("spring.mail.host", "mailpit")));

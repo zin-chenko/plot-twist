@@ -26,6 +26,9 @@ public class ProductionSafety implements ApplicationRunner {
     static void validate(Environment env) {
         if (!"https".equals(URI.create(env.getRequiredProperty("auth.issuer")).getScheme()))
             throw new IllegalStateException("Production issuer must use HTTPS");
+        String browserRedirect = env.getProperty("auth.browser-redirect-uri", "");
+        if (!browserRedirect.isBlank() && !"https".equals(URI.create(browserRedirect).getScheme()))
+            throw new IllegalStateException("Production browser redirect must use HTTPS");
         for (String flag : new String[]{"auth.bootstrap.enabled", "auth.machine-client.enabled", "auth.auto-create-key"})
             if (env.getProperty(flag, Boolean.class, false)) throw new IllegalStateException("Development auth switches must be disabled in production");
         if (!env.getProperty("server.servlet.session.cookie.secure", Boolean.class, false))

@@ -43,6 +43,14 @@ docker compose up -d --build --wait --wait-timeout 180
 
 ## Зарегистрироваться и пользоваться API
 
+### Браузерный интерфейс Angular
+
+Фронтенд находится в отдельном проекте `plot-twist-web`. После обновления backend выполните `docker compose up -d --build --wait --wait-timeout 180`, чтобы auth-service зарегистрировал браузерный клиент `plot-twist-browser`. В папке фронтенда: `npm ci` и `npm start`, затем откройте **http://localhost:4200**. Альтернатива без Node на хосте: `docker compose up -d --build --wait` из папки фронтенда; backend должен быть уже запущен и иметь сеть `plot-twist_edge`.
+
+Для браузера используется отдельный Authorization Code + PKCE клиент с callback `http://localhost:4200/auth/callback`, для CLI сохраняется прежний `plot-twist-web` и loopback callback. Параметр `AUTH_BROWSER_REDIRECT_URI` меняет точный браузерный callback; адрес завершения logout — тот же origin и `/signed-out`. В production нужен HTTPS callback. Frontend proxy отправляет API и auth-пути на gateway, поэтому CORS не требуется. `GET /default-ui.css` проксирует стили формы входа auth-service.
+
+### CLI
+
 ```sh
 python3 scripts/client.py register me@example.com
 # Возьмите одноразовый код из письма в Mailpit:

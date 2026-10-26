@@ -131,7 +131,8 @@ public class AuthConfig {
             @Value("${auth.client-secret:}") String clientSecret,
             @Value("${auth.bootstrap.enabled:false}") boolean bootstrapEnabled,
             @Value("${auth.machine-client.enabled:false}") boolean machineEnabled,
-            @Value("${auth.redirect-uri}") String redirectUri) {
+            @Value("${auth.redirect-uri}") String redirectUri,
+            @Value("${auth.browser-redirect-uri:}") String browserRedirectUri) {
         return args -> {
             if (bootstrapEnabled && !users.userExists(username)) {
                 users.createUser(User.withUsername(username).password(encoder.encode(password))
@@ -154,7 +155,24 @@ public class AuthConfig {
                     .requireAuthorizationConsent(false).build())
                 .tokenSettings(TokenSettings.builder().accessTokenTimeToLive(Duration.ofMinutes(5)).build())
                 .build());
+            if (!browserRedirectUri.isBlank()) clients.save(browserClient(browserRedirectUri));
         };
+    }
+
+    static RegisteredClient browserClient(String redirectUri) {
+        var uri = java.net.URI.create(redirectUri);
+        if (!("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
+                || uri.getHost() == null || uri.getUserInfo() != null
+                || uri.getQuery() != null || uri.getFragment() != null)
+            throw new IllegalArgumentException("Browser redirect must be an absolute HTTP(S) URL without query or fragment");
+        return RegisteredClient.withId("plot-twist-browser").clientId("plot-twist-browser")
+            .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
+            .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+            .redirectUri(redirectUri)
+            .postLogoutRedirectUri(uri.resolve("/signed-out").toString())
+            .scope("openid").scope("api.read").scope("api.write")
+            .clientSettings(ClientSettings.builder().requireProofKey(true).requireAuthorizationConsent(false).build())
+            .tokenSettings(TokenSettings.builder().accessTokenTimeToLive(Duration.ofMinutes(5)).build()).build();
     }
 
     @Bean

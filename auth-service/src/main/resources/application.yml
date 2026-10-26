@@ -39,6 +39,7 @@ auth:
     password: ${AUTH_BOOTSTRAP_PASSWORD:}
   client-secret: ${AUTH_CLIENT_SECRET:}
   redirect-uri: ${AUTH_REDIRECT_URI:http://127.0.0.1:18080/callback}
+  browser-redirect-uri: ${AUTH_BROWSER_REDIRECT_URI:}
 spring.threads.virtual.enabled: true
 spring.jackson.deserialization.fail-on-unknown-properties: true
 spring.mvc.problemdetails.enabled: true
