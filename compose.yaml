@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: plot_twist
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plot_twist -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  story-service:
+    build:
+      context: .
+      args:
+        MODULE: story-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/story
+      DB_USER: plot_twist
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
+    ports:
+      - "127.0.0.1:${STORY_PORT:-8081}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  character-service:
+    build:
+      context: .
+      args:
+        MODULE: character-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/character
+      DB_USER: plot_twist
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
+    ports:
+      - "127.0.0.1:${CHARACTER_PORT:-8082}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  postgres-data:
