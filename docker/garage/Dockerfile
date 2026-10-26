@@ -4,5 +4,6 @@ COPY --from=binary /garage /usr/local/bin/garage
 RUN addgroup -g 10001 garage && adduser -D -u 10001 -G garage garage && mkdir -p /var/lib/garage && chown garage:garage /var/lib/garage
 COPY garage.toml /etc/garage.toml
 COPY init.sh /init.sh
+RUN sed -i 's/\r$//' /init.sh
 USER garage
 CMD ["garage", "server"]

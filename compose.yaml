@@ -48,14 +48,12 @@ services:
       retries: 20
   postgres-init:
     logging: *log-config
-    image: postgres:17
+    build: ./docker/postgres
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-plot_twist_local}
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_dev_password}
       DOMAIN_DB_PASSWORD: ${DOMAIN_DB_PASSWORD:-domain_dev_password}
     command: ["sh", "/bootstrap/bootstrap.sh"]
-    volumes:
-      - ./docker/postgres:/bootstrap:ro
     networks: [data]
     depends_on:
       postgres:
