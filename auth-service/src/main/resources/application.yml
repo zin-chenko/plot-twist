@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/auth}
+    username: ${DB_USER:plot_twist}
+    password: ${DB_PASSWORD:plot_twist_local}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 3000
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+server:
+  shutdown: graceful
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+  endpoints:
+    web:
+      exposure:
+        include: health
+# Required settings are supplied by Compose. No fallback credentials outside local Compose.
+auth:
+  issuer: ${AUTH_ISSUER:http://localhost:8080}
+  signing-key: ${AUTH_SIGNING_KEY:/app/keys/signing.pk8}
+  bootstrap:
+    username: ${AUTH_BOOTSTRAP_USERNAME}
+    password: ${AUTH_BOOTSTRAP_PASSWORD}
+  client-secret: ${AUTH_CLIENT_SECRET}
+  redirect-uri: ${AUTH_REDIRECT_URI:http://127.0.0.1:18080/callback}

@@ -23,3 +23,6 @@ spring.lifecycle.timeout-per-shutdown-phase: 20s
 spring.datasource.hikari.maximum-pool-size: 10
 spring.datasource.hikari.connection-timeout: 3000
 domain.base-url: ${DOMAIN_BASE_URL:http://localhost:8082}
+auth:
+  issuer: ${AUTH_ISSUER:http://localhost:8080}
+  jwks-uri: ${AUTH_JWKS_URI:http://localhost:8083/oauth2/jwks}

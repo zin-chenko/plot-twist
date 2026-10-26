@@ -7,6 +7,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 BASE = os.getenv("GATEWAY_URL", "http://127.0.0.1:" + os.getenv("GATEWAY_PORT", "8080"))
+from auth_support import machine_token
+
 EXPECTED = int(os.getenv("EXPECTED_API_INSTANCES", "2"))
 
 
@@ -16,19 +18,27 @@ def request(path, headers=None):
 
 
 def check():
+    token = machine_token()
+    authenticated = {"Authorization": "Bearer " + token}
     body, _ = request("/readyz")
     assert json.loads(body)["status"] == "UP", body
     instances = set()
     for _ in range(24):
-        body, headers = request("/api/story", {"X-Request-ID": "untrusted-client-value"})
+        body, headers = request("/api/story", {**authenticated, "X-Request-ID": "untrusted-client-value"})
         assert json.loads(body) == {"service": "api-service", "status": "running"}, body
         assert headers["X-Request-ID"] and headers["X-Request-ID"] != "untrusted-client-value"
         assert headers["X-Backend-Instance"], "Missing backend identity"
         instances.add(headers["X-Backend-Instance"])
         time.sleep(0.03)
     assert len(instances) >= EXPECTED, f"Expected {EXPECTED} backends, got {instances}"
-    body, _ = request("/api/character")
+    body, _ = request("/api/character", authenticated)
     assert json.loads(body) == {"service": "domain-service", "status": "running"}, body
+    try:
+        request("/api/story")
+    except HTTPError as error:
+        assert error.code == 401, error.code
+    else:
+        raise AssertionError("API accepted an anonymous request")
     for path in ("/actuator/health", "/unknown"):
         try:
             request(path)
@@ -36,7 +46,7 @@ def check():
             assert error.code == 404, (path, error.code)
         else:
             raise AssertionError(f"Unexpected public route: {path}")
-    print(f"Gateway OK; {len(instances)} API replicas; API -> domain OK; actuator blocked")
+    print(f"Gateway OK; {len(instances)} API replicas; JWT/API -> domain OK; anonymous access denied; actuator blocked")
 
 
 if __name__ == "__main__":

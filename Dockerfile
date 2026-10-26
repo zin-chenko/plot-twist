@@ -1,6 +1,7 @@
 FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /build
 COPY pom.xml ./
+COPY auth-service ./auth-service
 COPY api-service ./api-service
 COPY domain-service ./domain-service
 ARG MODULE
@@ -9,6 +10,7 @@ RUN --mount=type=cache,target=/root/.m2 --mount=type=secret,id=maven_settings,ta
 FROM eclipse-temurin:21-jre-jammy
 RUN groupadd --system app && useradd --system --gid app app
 WORKDIR /app
+RUN mkdir /app/keys && chown app:app /app/keys
 COPY --from=build --chown=app:app /app.jar app.jar
 USER app
 EXPOSE 8080

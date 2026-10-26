@@ -3,7 +3,7 @@
 Java 21, Spring Boot 3.5.7, Maven Wrapper 3.9.11, PostgreSQL 17 и Nginx 1.28.
 
 ```text
-Клиент -> gateway (Nginx :8080)
+Клиент -> gateway (Nginx :8080) -> auth-service (OAuth2 / OIDC, БД auth)
             | round-robin
             +-> api-service (2 экземпляра) -> domain-service
                      |                            |
@@ -11,7 +11,9 @@ Java 21, Spring Boot 3.5.7, Maven Wrapper 3.9.11, PostgreSQL 17 и Nginx 1.28.
                      +-------- PostgreSQL --------+
 ```
 
-`api-service` — основной backend и будущее место аутентификации/авторизации. `domain-service` — внутренний сервис предметной логики. Сейчас это каркас: `/api/story` возвращает информацию об API, `/api/character` проходит цепочку gateway → API → domain. Авторизация и предметные таблицы пока не реализованы; gateway не делает эти маршруты защищёнными.
+`auth-service` — отдельный Spring Authorization Server: вход пользователей и выпуск JWT. `api-service` — основной backend, `domain-service` — внутренний сервис предметной логики. Оба backend проверяют JWT локально: подпись, issuer, audience, время действия и scope `api.read`. Без токена `/api/*` возвращает 401, без нужного scope — 403. `/api/story` возвращает информацию об API, `/api/character` проходит цепочку gateway → API → domain с передачей access token, `/api/me` показывает subject из проверенного JWT. Предметные таблицы пока не реализованы.
+
+Схема входа, OAuth-клиенты, локальные учётные данные и ограничения описаны в [docs/auth.md](docs/auth.md).
 
 ## Запуск
 
@@ -20,17 +22,17 @@ Java 21, Spring Boot 3.5.7, Maven Wrapper 3.9.11, PostgreSQL 17 и Nginx 1.28.
 ```sh
 docker compose up -d --build --wait --remove-orphans
 python3 scripts/smoke-test.py
-docker compose logs -f gateway api-service domain-service
+python3 scripts/test-auth.py
+docker compose logs -f gateway api-service domain-service auth-service
 ```
 
 `--remove-orphans` удаляет старые контейнеры `story-service` / `character-service` после переименования модулей. Данные PostgreSQL сохраняются: имена баз `story` / `character` и том `postgres-data` оставлены прежними.
 
-Единственный опубликованный порт — gateway на `127.0.0.1:8080`. В браузере откройте `http://localhost:8080/api/story` или `http://localhost:8080/api/character`. Это JSON API, интерфейса пока нет.
+Единственный опубликованный порт — gateway на `127.0.0.1:8080`. `/api/*` — защищённый JSON API, пользовательского интерфейса пока нет. Стандартная форма входа обслуживается auth-сервисом в OAuth2 flow. Smoke-тест сам получает машинный токен и проверяет цепочку сервисов.
 
 ```sh
 curl --fail http://localhost:8080/readyz
-curl -i http://localhost:8080/api/story
-curl --fail http://localhost:8080/api/character
+curl -i http://localhost:8080/api/story  # ожидается 401 без токена
 docker compose ps
 docker compose down  # сохранить данные
 ```
@@ -39,16 +41,16 @@ docker compose down  # сохранить данные
 
 ## Gateway и балансировка
 
-Конфигурация: `docker/nginx/nginx.conf`. Nginx выполняет сразу две роли: маршрутизацию публичного API и балансировку между экземплярами основного backend. Отдельный Java gateway и сервис регистрации пока не нужны.
+Конфигурация: `docker/nginx/nginx.conf`. Она включена в образ gateway: после изменения выполните `docker compose up -d --build --wait`, чтобы Compose пересоздал gateway с новой конфигурацией. Nginx выполняет сразу две роли: маршрутизацию публичного API и балансировку между экземплярами основного backend. Отдельный Java gateway и сервис регистрации пока не нужны.
 
-- Round-robin использует DNS Docker, `resolver 127.0.0.11` и динамический upstream `resolve` с обновлением раз в 5 секунд. После масштабирования или замены контейнеров reload Nginx не нужен. Sticky sessions не используются.
+- Round-robin использует DNS Docker, `resolver 127.0.0.11` и динамический upstream `resolve` с обновлением раз в 5 секунд. После масштабирования или замены контейнеров reload Nginx не нужен. Sticky sessions для API не используются. Auth сейчас запускается в одном экземпляре; его login-сессии пока локальные.
 - Между gateway и API сохраняются соединения. Таймаут подключения — 2 с, чтения — 10 с; у API → domain — 2 / 5 с. Это стартовые значения, их следует подобрать по SLO и измерениям.
 - Пассивная проверка исключает upstream после двух ошибок на 5 с. Повторы ограничены двумя попытками и окном 5 с; автоматическое повторение отправленных неидемпотентных запросов не включено. Отказавший backend не исключается заранее по Docker healthcheck: отдельные запросы во время отказа могут завершиться ошибкой.
-- Лимит тела — 1 MiB. Ограничение запросов — 50 в секунду на IP с burst 100, превышение возвращает 429. Это локальный лимит одного Nginx, не глобальная квота пользователя; NAT объединяет пользователей под одним IP.
-- Gateway генерирует `X-Request-ID`, передаёт его API → domain и пишет upstream, статусы и время в access log. Клиентские forwarding-заголовки перезаписываются. `X-Backend-Instance` на `/api/story` служит диагностикой балансировки, его стоит убрать из публичного production API.
+- Лимит тела — 1 MiB. Ограничение API — 50 запросов в секунду на IP с burst 100, для auth-маршрутов — 5 в секунду с burst 20; превышение возвращает 429. Это локальный лимит одного Nginx, не глобальная квота пользователя; NAT объединяет пользователей под одним IP.
+- Gateway генерирует `X-Request-ID`, передаёт его API → domain и пишет upstream, статусы и время в access log. Query strings исключены из access log, OAuth/login-маршруты не пишутся туда, токены и пароли не логируются приложением. Клиентские forwarding-заголовки перезаписываются. `X-Backend-Instance` на `/api/story` служит диагностикой балансировки, его стоит убрать из публичного production API.
 - Nginx работает без root, с read-only filesystem и временными файлами в tmpfs. Spring использует graceful shutdown; Compose даёт 30 с на остановку.
 
-Backend и PostgreSQL не публикуют порты хоста. Gateway и API соединены сетью `edge`, API и domain — внутренней `services`, доступ к БД — через внутреннюю `data`. Gateway не включён в сети domain/БД. Это сетевое разделение, а не замена аутентификации сервисов.
+Backend и PostgreSQL не публикуют порты хоста. Gateway, API и auth соединены сетью `edge`; API, domain и auth — внутренней `services`; доступ к БД — через внутреннюю `data`. Gateway не включён в сети domain/БД. Auth публикует только публичные ключи через `/oauth2/jwks`, закрытый ключ хранится в томе `auth-keys`. Это сетевое разделение, а не замена аутентификации сервисов.
 
 ## Масштабирование
 
@@ -75,9 +77,9 @@ python3 scripts/test-resilience.py
 
 ## Конфигурация и разработка
 
-Необязательно скопируйте `.env.example` в `.env`. Настройки: `GATEWAY_PORT` и `POSTGRES_PASSWORD`. Пример содержит только локальный пароль, `.env` исключён из Git и Docker build context. Для изменённых портов smoke-тесту нужен `GATEWAY_PORT` в окружении либо полный `GATEWAY_URL` (Compose сам читает `.env`, Python — нет).
+Необязательно скопируйте `.env.example` в `.env`. Настройки: `GATEWAY_PORT`, `POSTGRES_PASSWORD` и `AUTH_*` из `.env.example`. При смене публичного адреса/порта задайте соответствующий `AUTH_ISSUER`. Пример содержит локальные demo-пароли/секреты, `.env` исключён из Git и Docker build context. Для изменённых портов smoke-тесту нужен `GATEWAY_PORT` в окружении либо полный `GATEWAY_URL` (Compose сам читает `.env`, Python — нет).
 
-Базы создаются `docker/postgres/init.sql` только при первом создании тома. Изменение переменной пароля не меняет пароль в существующей БД. `docker compose down -v` удалит данные — используйте только осознанно. Для SQL-диагностики: `docker compose exec postgres psql -U plot_twist -d story`.
+Базы создаются идемпотентным `docker/postgres/init.sql`: при создании PostgreSQL и одноразовым сервисом `postgres-init` для обновления существующего тома. Успешное состояние `postgres-init` — `Exited (0)`. Схему auth обновляет Flyway. Изменение переменной пароля не меняет пароль в существующей БД. `docker compose down -v` удалит данные — используйте только осознанно. Для SQL-диагностики: `docker compose exec postgres psql -U plot_twist -d story`.
 
 Для сборки вне Docker нужен **JDK 21**:
 
@@ -91,4 +93,4 @@ python3 scripts/test-resilience.py
 
 Compose здесь — среда разработки на одной машине, а один Nginx и один PostgreSQL остаются точками отказа. Для production рекомендуемая схема: DNS → управляемый L4/L7 load balancer с TLS → несколько gateway на разных узлах → экземпляры API → domain. Нужны отказоустойчивость PostgreSQL и резервные копии, метрики p95/p99, ошибки, пулы и нагрузочные тесты.
 
-TLS-сертификаты и публичный домен в этом примере не настроены: HTTP слушает только loopback. Если TLS завершается на внешнем load balancer, доверять forwarding-заголовкам можно лишь от его известных адресов; текущая конфигурация рассчитана на прямое обращение к gateway. Ограничение частоты следует перенести или согласовать на внешнем балансировщике, либо реализовать распределённые квоты. Не открывайте текущий каркас в интернет до реализации авторизации. Пользователи БД сейчас общие и предназначены для локальной разработки; для production нужны отдельные роли и секреты.
+TLS-сертификаты и публичный домен в этом примере не настроены: HTTP слушает только loopback. Если TLS завершается на внешнем load balancer, доверять forwarding-заголовкам можно лишь от его известных адресов; текущая конфигурация рассчитана на прямое обращение к gateway. Ограничение частоты следует перенести или согласовать на внешнем балансировщике, либо реализовать распределённые квоты. Перед публикацией настройте HTTPS, собственные секреты и OAuth-клиентов; локальные demo-значения не подходят для production. Масштабирование auth потребует общего хранилища login-сессий и управляемой ротации ключей. Пользователи БД сейчас общие и предназначены для локальной разработки; для production нужны отдельные роли и секреты.

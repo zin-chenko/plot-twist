@@ -3,6 +3,7 @@
 import json, os, subprocess, time
 from urllib.request import urlopen
 from urllib.error import HTTPError
+from auth_support import machine_token, bearer_request
 
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
@@ -15,6 +16,7 @@ def smoke(count):
 
 base=os.getenv('GATEWAY_URL', 'http://127.0.0.1:' + os.getenv('GATEWAY_PORT', '8080'))
 gateway=output('docker','compose','ps','-q','gateway')
+token=machine_token()
 try:
     run('docker','compose','up','-d','--no-build','--scale','api-service=3','--wait')
     smoke(3)
@@ -28,7 +30,7 @@ try:
         transient_errors=0
         while successful < 12:
             try:
-                with urlopen(base+'/api/story',timeout=15) as response:
+                with urlopen(bearer_request('/api/story', token),timeout=15) as response:
                     assert json.load(response)['service']=='api-service'
                 successful+=1
             except HTTPError as error:
@@ -45,17 +47,17 @@ finally:
 try:
     run('docker','compose','stop','domain-service')
     try:
-        urlopen(base+'/api/character',timeout=20)
+        urlopen(bearer_request('/api/character', token),timeout=20)
         raise AssertionError('Expected 503')
     except HTTPError as error:
         assert error.code==503, error.code
-    with urlopen(base+'/api/story',timeout=15) as response:
+    with urlopen(bearer_request('/api/story', token),timeout=15) as response:
         assert response.status==200
     print('PASS: domain outage returns 503 while API stays available', flush=True)
 finally:
     run('docker','compose','up','-d','--no-build','--wait')
 smoke(2)
-for service in ('api-service','domain-service','postgres'):
+for service in ('api-service','domain-service','auth-service','postgres'):
     for cid in output('docker','compose','ps','-q',service).splitlines():
         info=json.loads(output('docker','inspect',cid))[0]
         assert not info['HostConfig'].get('PortBindings'), service
