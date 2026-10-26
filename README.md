@@ -26,6 +26,30 @@ python3 scripts/test-profile.py
 
 **Локальные письма попадают в Mailpit на `http://localhost:8025`, а не во внешний почтовый ящик.** Локальное S3-хранилище — Garage с сохраняемым томом. Production использует реальный SMTP и внешний приватный S3 bucket; Mailpit/Garage в production-композиции выключены.
 
+### Windows: ошибка `postgres-init`, exit 2
+
+Сначала посмотрите причину: `docker compose logs --no-color postgres-init`. Если лог содержит `set: Illegal option`, `\r` или `$'\r': command not found`, shell-скрипт попал в Linux-контейнер с Windows-окончаниями строк CRLF. `.gitattributes` закрепляет LF для файлов проекта и CRLF для Windows-лаунчеров, независимо от `core.autocrlf`.
+
+В уже существующем клоне после `git pull` файлы могут сохранить прежние окончания строк. Исправьте только скрипты и SQL инициализации в PowerShell из корня проекта:
+
+```powershell
+$paths = @(
+    "docker/postgres/bootstrap.sh",
+    "docker/postgres/init.sql",
+    "docker/postgres/roles.sql",
+    "docker/garage/init.sh"
+)
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+foreach ($relative in $paths) {
+    $path = (Resolve-Path $relative).Path
+    $text = [System.IO.File]::ReadAllText($path)
+    [System.IO.File]::WriteAllText($path, $text.Replace("`r`n", "`n"), $utf8)
+}
+docker compose up -d --build --wait --wait-timeout 180
+```
+
+Пересборка нужна в том числе для `garage-init`: его скрипт копируется в образ. Тома с базой, ключами и фотографиями сохраняются; удалять их для исправления окончаний строк не требуется. Если лог сообщает другую ошибку, диагностируйте её по логу, а не по одному коду завершения.
+
 ## Зарегистрироваться и пользоваться API
 
 ```sh

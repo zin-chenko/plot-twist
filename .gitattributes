@@ -1,0 +1,6 @@
+# Container inputs must keep Unix line endings, including Windows checkouts.
+* text=auto eol=lf
+
+# Native Windows launchers keep their expected line endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf
