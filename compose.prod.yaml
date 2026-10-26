@@ -1,6 +1,17 @@
 # Requires Docker Compose >= 2.24.4 (!override / !reset).
 # Always use a separate production project and real secret files; see docs/production.md.
 services:
+  monitoring-config:
+    profiles: [monitoring]
+  prometheus:
+    profiles: [monitoring]
+  grafana:
+    profiles: [monitoring]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: !reset null
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/GRAFANA_ADMIN_PASSWORD
+    secrets:
+      - {source: grafana_admin_password, target: GRAFANA_ADMIN_PASSWORD}
   gateway:
     build:
       args:
@@ -120,6 +131,7 @@ volumes:
   caddy-data:
   caddy-config:
 secrets:
+  grafana_admin_password: {file: ./secrets/grafana-admin-password}
   pg_admin_password: {file: ./secrets/pg-admin-password}
   auth_db_password: {file: ./secrets/auth-db-password}
   domain_db_password: {file: ./secrets/domain-db-password}

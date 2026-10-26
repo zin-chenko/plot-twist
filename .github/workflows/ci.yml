@@ -20,7 +20,9 @@ jobs:
       - name: Build images and execute Java security/unit tests
         run: docker compose build
       - name: Validate production composition
-        run: docker compose --env-file .env.production.example -f compose.yaml -f compose.prod.yaml config --quiet
+        run: |
+          docker compose --env-file .env.production.example -f compose.yaml -f compose.prod.yaml config --quiet
+          docker compose --profile monitoring --env-file .env.production.example -f compose.yaml -f compose.prod.yaml config --quiet
       - name: Start isolated development stack
         run: docker compose up -d --no-build --wait --wait-timeout 180
       - name: Exercise registration and private profile API
@@ -29,6 +31,8 @@ jobs:
           python3 scripts/test-auth.py --restart
           python3 scripts/test-profile.py
           python3 scripts/test-backup-restore.py
+      - name: Verify provisioned monitoring and real HTTP histograms
+        run: python3 scripts/test-monitoring.py
       - name: Exercise backend failover
         run: python3 scripts/test-resilience.py
       - name: Diagnostics on failure

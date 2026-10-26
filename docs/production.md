@@ -65,7 +65,7 @@ For a full restore, test PostgreSQL PITR/snapshots, the matching S3 versions and
 ## Metrics, logs, alerts
 
 - Private `/actuator/prometheus`: HTTP latency/status, JVM/pools, `auth_email_outbox_pending`, `auth_email_outbox_dead`, `profile_media_cleanup_pending`.
-- `monitoring/prometheus.yml` uses DNS discovery so each API replica is a distinct target. Bring your own protected Prometheus/Grafana stack; the repository does not expose actuator data through the public gateway.
+- `monitoring/prometheus.yml` uses DNS discovery so each API replica is a distinct target. The optional production `monitoring` profile provides loopback-only Prometheus/Grafana with a file-backed admin password and provisioned dashboard; see [monitoring setup](monitoring.md). The public gateway does not expose actuator data. External TLS/SSO, alert delivery and operational ownership remain deployment-specific.
 - Set `TRACING_ENABLED=true` and `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` for your collector. Review sampling, redaction and retention before exporting personal-data systems' telemetry. Request bodies/passwords/tokens are not application log fields.
 - Configure latency/error SLOs, dependency health, queue age/size, disk capacity, DB connection budget, backup age and certificate expiry alerts. Keep operational access off the public network. Logs rotate locally (3×10 MiB per container); central retention is a separate configuration.
 

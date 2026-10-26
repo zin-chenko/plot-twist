@@ -1,0 +1,13 @@
+apiVersion: 1
+providers:
+  - name: Plot Twist
+    orgId: 1
+    folder: Plot Twist
+    folderUid: plot-twist
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/plot-twist-grafana/dashboards
+      foldersFromFilesStructure: false

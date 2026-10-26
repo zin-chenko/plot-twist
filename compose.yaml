@@ -4,6 +4,97 @@ x-log-config: &log-config
     max-size: "10m"
     max-file: "3"
 services:
+  monitoring-config:
+    logging: *log-config
+    image: alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+    command:
+      - sh
+      - -ec
+      - |
+        cp /input/prometheus.yml /prometheus-config/prometheus.yml
+        rm -rf /grafana-config/provisioning /grafana-config/dashboards
+        cp -R /input/grafana/provisioning /input/grafana/dashboards /grafana-config/
+        chmod -R a=rX /prometheus-config /grafana-config
+    volumes:
+      - ./monitoring:/input:ro
+      - prometheus-config:/prometheus-config
+      - grafana-config:/grafana-config
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    mem_limit: 32m
+  prometheus:
+    logging: *log-config
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    command:
+      - --config.file=/etc/plot-twist-prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=512MB
+    environment:
+      GOMEMLIMIT: 190MiB
+      GOMAXPROCS: "2"
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+    volumes: ["prometheus-data:/prometheus", "prometheus-config:/etc/plot-twist-prometheus:ro"]
+    networks: [services, monitoring]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    depends_on:
+      monitoring-config: {condition: service_completed_successfully}
+      api-service: {condition: service_healthy}
+      auth-service: {condition: service_healthy}
+      domain-service: {condition: service_healthy}
+  grafana:
+    logging: *log-config
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-plot-twist-local}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_PATHS_PROVISIONING: /etc/plot-twist-grafana/provisioning
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/plot-twist-grafana/dashboards/backend-overview.json
+      GF_LOG_MODE: console
+      GOMEMLIMIT: 280MiB
+      GOMAXPROCS: "2"
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3000}:3000"]
+    volumes: ["grafana-data:/var/lib/grafana", "grafana-config:/etc/plot-twist-grafana:ro"]
+    networks: [monitoring]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      monitoring-config: {condition: service_completed_successfully}
+      prometheus: {condition: service_healthy}
   gateway:
     logging: *log-config
     build:
@@ -61,6 +152,7 @@ services:
     restart: "no"
   auth-service:
     logging: *log-config
+    env_file: ./monitoring/java-metrics.env
     build:
       context: .
       args:
@@ -97,6 +189,7 @@ services:
     security_opt: [no-new-privileges:true]
   api-service:
     logging: *log-config
+    env_file: ./monitoring/java-metrics.env
     build:
       context: .
       args:
@@ -122,6 +215,7 @@ services:
     security_opt: [no-new-privileges:true]
   domain-service:
     logging: *log-config
+    env_file: ./monitoring/java-metrics.env
     build:
       context: .
       args:
@@ -188,6 +282,8 @@ services:
         condition: service_healthy
     restart: "no"
 networks:
+  monitoring:
+    # A regular bridge publishes the loopback-bound UI ports on the host.
   storage:
     internal: true
   edge:
@@ -196,6 +292,10 @@ networks:
   data:
     internal: true
 volumes:
+  prometheus-config:
+  grafana-config:
+  prometheus-data:
+  grafana-data:
   postgres-data:
   auth-keys:
   garage-data:

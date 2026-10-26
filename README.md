@@ -101,11 +101,14 @@ python3 scripts/client.py logout
 
 ## Проверки и эксплуатация
 
+Grafana запускается вместе с локальным Compose: **http://localhost:3000/d/plot-twist-overview**. Вход при первой инициализации: **admin / plot-twist-local**; его можно настроить через `GRAFANA_ADMIN_PASSWORD`. Дашборд и Prometheus datasource устанавливаются автоматически. Prometheus: **http://localhost:9090/targets**. После запуска подождите 30–60 секунд и выполните запросы через приложение, чтобы увидеть HTTP RPS и p95/p99. [Инструкция по графикам, хранению и доступу](docs/monitoring.md).
+
 ```sh
 python3 scripts/test-auth.py --restart    # временно останавливает auth, только в dev
 python3 scripts/test-resilience.py      # масштабирует/останавливает сервисы, только в dev
 python3 scripts/test-backup-restore.py  # восстанавливает копии в новые временные БД
 python3 scripts/test-profile.py --benchmark
+python3 scripts/test-monitoring.py     # provisioning, targets и реальные RPS/p95
 ```
 
 Для небольшого read-теста вашего существующего профиля после CLI login:
@@ -114,7 +117,7 @@ python3 scripts/test-profile.py --benchmark
 python3 scripts/benchmark.py --rps 20 --seconds 15
 ```
 
-Это проверка одного ограниченного сценария, а не измерение предельной нагрузки. Выбирайте целевые RPS, p95/p99 и бюджет ошибок до capacity-тестов. Метрики доступны на приватных `/actuator/prometheus`; пример DNS discovery для всех реплик — `monitoring/prometheus.yml`. Для экспорта трасс включите `TRACING_ENABLED` и задайте OTLP endpoint своего collector. Логи приложений — ECS JSON без тел запросов и паролей; локальные Docker-логи ограничены по объёму.
+Это проверка одного ограниченного сценария, а не измерение предельной нагрузки. Выбирайте целевые RPS, p95/p99 и бюджет ошибок до capacity-тестов. Prometheus собирает приватные `/actuator/prometheus` каждой реплики через DNS discovery из `monitoring/prometheus.yml`; HTTP-гистограммы включены общей Compose-конфигурацией `monitoring/java-metrics.env`. Для экспорта трасс включите `TRACING_ENABLED` и задайте OTLP endpoint своего collector. Логи приложений — ECS JSON без тел запросов и паролей; локальные Docker-логи ограничены по объёму.
 
 `/healthz` проверяет Nginx; `/readyz` — выбранный API. Готовность domain учитывает его БД; S3 имеет отдельный health component, поэтому сбой фото-хранилища не отключает редактирование текстовых полей профиля. Сквозной smoke проверяет зависимости отдельно.
 
