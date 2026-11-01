@@ -14,6 +14,18 @@ import org.springframework.web.server.ResponseStatusException;
 public class ProblemAdvice {
   private static final Logger log = LoggerFactory.getLogger(ProblemAdvice.class);
 
+  @ExceptionHandler(io.plottwist.domain.story.application.StoryException.class)
+  ResponseEntity<ProblemDetail> story(io.plottwist.domain.story.application.StoryException error) {
+    return problem(
+        switch (error.reason()) {
+          case NOT_FOUND -> HttpStatus.NOT_FOUND;
+          case FORBIDDEN -> HttpStatus.FORBIDDEN;
+          case VERSION_CHANGED -> HttpStatus.PRECONDITION_FAILED;
+          case INVALID_INPUT -> HttpStatus.BAD_REQUEST;
+        },
+        error.getMessage());
+  }
+
   @ExceptionHandler(ProfileException.class)
   ResponseEntity<ProblemDetail> profile(ProfileException error) {
     HttpStatus status =

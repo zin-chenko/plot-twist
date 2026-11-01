@@ -30,6 +30,7 @@ jobs:
           python3 scripts/smoke-test.py
           python3 scripts/test-auth.py --restart
           python3 scripts/test-profile.py
+          python3 scripts/test-stories.py
           python3 scripts/test-backup-restore.py
       - name: Verify provisioned monitoring and real HTTP histograms
         run: python3 scripts/test-monitoring.py

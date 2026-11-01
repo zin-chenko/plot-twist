@@ -1,6 +1,6 @@
 package io.plottwist.api.profile.api;
 
-import io.plottwist.api.profile.application.port.ProfileBackend;
+import io.plottwist.api.shared.application.port.DomainBackend;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import org.springframework.http.*;
@@ -12,10 +12,10 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/v1/profile")
 public class ProfileGateway {
-  private final ProfileBackend backend;
+  private final DomainBackend backend;
   private static final int MAX_IMAGE = 5 * 1024 * 1024;
 
-  public ProfileGateway(ProfileBackend backend) {
+  public ProfileGateway(DomainBackend backend) {
     this.backend = backend;
   }
 

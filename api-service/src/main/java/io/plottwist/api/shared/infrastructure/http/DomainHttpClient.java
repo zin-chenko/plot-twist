@@ -1,6 +1,6 @@
-package io.plottwist.api.profile.infrastructure.http;
+package io.plottwist.api.shared.infrastructure.http;
 
-import io.plottwist.api.profile.application.port.ProfileBackend;
+import io.plottwist.api.shared.application.port.DomainBackend;
 import java.time.Duration;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,10 +12,10 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
-public class ProfileClient implements ProfileBackend {
+public class DomainHttpClient implements DomainBackend {
   private final RestClient client;
 
-  public ProfileClient(
+  public DomainHttpClient(
       RestClient.Builder builder, @Value("${domain.base-url:http://localhost:8082}") String url) {
     var http = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
     var factory = new JdkClientHttpRequestFactory(http);
@@ -67,7 +67,7 @@ public class ProfileClient implements ProfileBackend {
           });
     } catch (RestClientException unavailable) {
       throw new ResponseStatusException(
-          HttpStatus.SERVICE_UNAVAILABLE, "Profile service is temporarily unavailable");
+          HttpStatus.SERVICE_UNAVAILABLE, "Domain service is temporarily unavailable");
     }
   }
 }

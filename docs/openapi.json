@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Plot Twist Profile API",
-    "version": "1.0.0",
-    "description": "Private profile API. Human access uses OAuth2 Authorization Code + PKCE. Machine grants cannot access personal profiles without a verified account identity."
+    "title": "Plot Twist API",
+    "version": "1.1.0",
+    "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT."
   },
   "servers": [
     {
@@ -823,6 +823,632 @@
           }
         }
       }
+    },
+    "/api/v1/stories": {
+      "get": {
+        "operationId": "listStories",
+        "summary": "Read the authenticated feed, newest first",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryPage"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "description": "Opaque nextCursor from the previous page. Newest first; no offsets."
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Only stories by the current account."
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createStory",
+        "summary": "Publish a story as the verified account",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Story"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted story content version; reactions and comments do not change this version."
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoryInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stories/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getStory",
+        "summary": "Read any story",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Story"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted story content version; reactions and comments do not change this version."
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateStory",
+        "summary": "Replace own story title/body",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Story"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted story content version; reactions and comments do not change this version."
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          },
+          "412": {
+            "description": "Story version changed; reload and reconcile"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoryInput"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\"[0-9]{1,18}\"$"
+            },
+            "description": "Exact story ETag from GET. Only its author may edit/delete."
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteStory",
+        "summary": "Delete own story and cascade comments/reactions",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          },
+          "412": {
+            "description": "Story version changed; reload and reconcile"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        },
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\"[0-9]{1,18}\"$"
+            },
+            "description": "Exact story ETag from GET. Only its author may edit/delete."
+          }
+        ]
+      }
+    },
+    "/api/v1/stories/{id}/reaction": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "setStoryReaction",
+        "summary": "Set, switch or remove the current account’s single vote",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Story"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted story content version; reactions and comments do not change this version."
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReactionInput"
+              }
+            }
+          }
+        },
+        "description": "The (story_id, account_id) primary key and atomic upsert enforce at most one vote even under concurrent requests. Account identity is never accepted from JSON."
+      }
+    },
+    "/api/v1/stories/{id}/comments": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listStoryComments",
+        "summary": "Read comments, newest first",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentPage"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "description": "Opaque nextCursor from the previous page. Newest first; no offsets."
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createStoryComment",
+        "summary": "Write a comment as the verified account",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryComment"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stories/{id}/comments/{commentId}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "commentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "deleteStoryComment",
+        "summary": "Delete own comment",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1078,6 +1704,221 @@
             "additionalProperties": {
               "type": "string"
             }
+          }
+        }
+      },
+      "StoryInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "body"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        }
+      },
+      "Story": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "authorId",
+          "authorName",
+          "title",
+          "body",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "likes",
+          "dislikes",
+          "myReaction",
+          "commentCount"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "authorName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "likes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dislikes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "myReaction": {
+            "type": "integer",
+            "enum": [
+              -1,
+              0,
+              1
+            ]
+          },
+          "commentCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "StoryComment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "storyId",
+          "authorId",
+          "authorName",
+          "body",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "storyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "authorName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CommentInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        }
+      },
+      "ReactionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "integer",
+            "enum": [
+              -1,
+              0,
+              1
+            ],
+            "description": "1=like, -1=dislike, 0=remove. Setting the same value is idempotent."
+          }
+        }
+      },
+      "StoryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/Story"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 180
+          }
+        }
+      },
+      "CommentPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/StoryComment"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 180
           }
         }
       }

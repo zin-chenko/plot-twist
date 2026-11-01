@@ -1,4 +1,4 @@
-# Profile and media service
+# Profile, stories and media service
 
 Владеет личными профилями, версиями записей, метаданными фото и жизненным циклом приватных объектов. База: PostgreSQL `profiles`; байты фото — приватное S3-совместимое хранилище.
 
@@ -10,6 +10,7 @@ io.plottwist.domain
 │   ├── application/port
 │   ├── model
 │   └── infrastructure/persistence
+├── story/{api,application/port,model,infrastructure/persistence}
 ├── media
 │   ├── application/port
 │   ├── model
@@ -28,3 +29,5 @@ io.plottwist.domain
 Из корня: `./mvnw -pl domain-service -am verify`. Интеграционные проверки профиля/S3 — `python3 scripts/test-profile.py` при запущенном Compose.
 
 [Общие правила структуры](../docs/backend-structure.md) · [Контракт API](../docs/openapi.json)
+
+`StoryService` и `JdbcStoryRepository` реализуют ленту с курсорами, авторство, версионирование, уникальные оценки и комментарии в той же БД. Миграция V2 дополняет V1; данные профилей сохраняются. Проверка: `python3 scripts/test-stories.py`. [Подробности](../docs/stories.md).

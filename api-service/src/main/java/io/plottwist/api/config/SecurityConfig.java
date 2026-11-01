@@ -35,6 +35,15 @@ public class SecurityConfig {
                     .hasAuthority("SCOPE_api.write")
                     .requestMatchers(HttpMethod.DELETE, "/api/v1/profile", "/api/v1/profile/photo")
                     .hasAuthority("SCOPE_api.write")
+                    .requestMatchers(
+                        HttpMethod.POST, "/api/v1/stories", "/api/v1/stories/*/comments")
+                    .hasAuthority("SCOPE_api.write")
+                    .requestMatchers(
+                        HttpMethod.PUT, "/api/v1/stories/*", "/api/v1/stories/*/reaction")
+                    .hasAuthority("SCOPE_api.write")
+                    .requestMatchers(
+                        HttpMethod.DELETE, "/api/v1/stories/*", "/api/v1/stories/*/comments/*")
+                    .hasAuthority("SCOPE_api.write")
                     .anyRequest()
                     .denyAll())
         .oauth2ResourceServer(resource -> resource.jwt(Customizer.withDefaults()))

@@ -41,6 +41,7 @@ class ArchitectureTest {
           .resideInAnyPackage(
               "io.plottwist.domain.account.api..",
               "io.plottwist.domain.profile.api..",
+              "io.plottwist.domain.story.api..",
               "..infrastructure..",
               "org.springframework.jdbc..",
               "software.amazon.awssdk..",
@@ -52,7 +53,9 @@ class ArchitectureTest {
       noClasses()
           .that()
           .resideInAnyPackage(
-              "io.plottwist.domain.account.api..", "io.plottwist.domain.profile.api..")
+              "io.plottwist.domain.account.api..",
+              "io.plottwist.domain.profile.api..",
+              "io.plottwist.domain.story.api..")
           .should()
           .dependOnClassesThat()
           .resideInAnyPackage(
@@ -69,7 +72,9 @@ class ArchitectureTest {
           .should()
           .dependOnClassesThat()
           .resideInAnyPackage(
-              "io.plottwist.domain.account.api..", "io.plottwist.domain.profile.api..");
+              "io.plottwist.domain.account.api..",
+              "io.plottwist.domain.profile.api..",
+              "io.plottwist.domain.story.api..");
 
   @ArchTest
   static final ArchRule featuresHaveNoCycles =
