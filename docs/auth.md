@@ -43,3 +43,9 @@ Development creates a persistent RSA signing key in `auth-keys`; production requ
 Login state is in JDBC, but an HA rollout still needs all auth instances to use the same externally managed signing identity, the same client configuration and this code version. No mixed rollout with the old unlocked code-redemption implementation is safe. The supplied Compose production topology defaults to one auth instance; it does not claim a multi-host HA deployment.
 
 Local demo credentials are in `.env.example`. Local mail is caught by Mailpit. Do not point the destructive integration tests at real user data or a production SMTP account.
+
+## Служебные запросы браузера во время входа
+
+После отправки формы Spring продолжает только сохранённый GET `/oauth2/authorize`, включая state и PKCE. Один `AuthorizationRequestCache` используется цепочками authorization server и login. Запросы favicon, DevTools и неизвестных ресурсов не заменяют OAuth-запрос; старые посторонние SavedRequest удаляются при чтении из существующей сессии.
+
+`/.well-known/appspecific/com.chrome.devtools.json` — необязательный запрос Chrome DevTools. Gateway отвечает на `/.well-known/appspecific/` обычным 404 без обращения к auth-service; при прямом обращении к auth-service этот ресурс тоже не требует входа. 404 для отсутствующего файла допустим и не должен становиться адресом перехода после логина. OIDC discovery и OAuth metadata продолжают работать.

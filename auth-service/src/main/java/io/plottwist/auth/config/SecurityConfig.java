@@ -1,6 +1,7 @@
 package io.plottwist.auth.config;
 
 import io.plottwist.auth.oauth.infrastructure.security.BrowserRedirectValidator;
+import io.plottwist.auth.oauth.infrastructure.web.AuthorizationRequestCache;
 import io.plottwist.auth.oauth.infrastructure.web.TokenEndpointTransactions;
 import io.plottwist.auth.security.web.AuthWorkLimiter;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +19,7 @@ import org.springframework.security.oauth2.server.authorization.settings.*;
 import org.springframework.security.oauth2.server.authorization.token.*;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
 @Configuration
@@ -25,7 +27,10 @@ public class SecurityConfig {
   @Bean
   @Order(1)
   SecurityFilterChain authorizationServer(
-      HttpSecurity http, AuthWorkLimiter limiter, TokenEndpointTransactions tokenTransactions)
+      HttpSecurity http,
+      AuthWorkLimiter limiter,
+      TokenEndpointTransactions tokenTransactions,
+      RequestCache requestCache)
       throws Exception {
     var server = OAuth2AuthorizationServerConfigurer.authorizationServer();
     java.util.function.Consumer<OAuth2AuthorizationCodeRequestAuthenticationContext>
@@ -34,6 +39,7 @@ public class SecurityConfig {
             limiter, org.springframework.security.web.context.SecurityContextHolderFilter.class)
         .addFilterAfter(tokenTransactions, AuthWorkLimiter.class)
         .securityMatcher(server.getEndpointsMatcher())
+        .requestCache(cache -> cache.requestCache(requestCache))
         .with(
             server,
             authorization ->
@@ -85,14 +91,20 @@ public class SecurityConfig {
 
   @Bean
   @Order(3)
-  SecurityFilterChain login(HttpSecurity http, AuthWorkLimiter limiter) throws Exception {
+  SecurityFilterChain login(HttpSecurity http, AuthWorkLimiter limiter, RequestCache requestCache)
+      throws Exception {
     // CSRF is enabled for the login form and session-backed user interaction.
-    return http.addFilterBefore(
+    return http.requestCache(cache -> cache.requestCache(requestCache))
+        .addFilterBefore(
             limiter, org.springframework.security.web.context.SecurityContextHolderFilter.class)
         .authorizeHttpRequests(
             auth ->
                 auth.requestMatchers(
-                        "/actuator/health", "/actuator/health/**", "/actuator/prometheus", "/error")
+                        "/actuator/health",
+                        "/actuator/health/**",
+                        "/actuator/prometheus",
+                        "/error",
+                        "/.well-known/appspecific/**")
                     .permitAll()
                     .anyRequest()
                     .authenticated())
@@ -101,6 +113,11 @@ public class SecurityConfig {
                 form.failureHandler(
                     (request, response, error) -> response.sendRedirect("/login?error")))
         .build();
+  }
+
+  @Bean
+  RequestCache authorizationRequestCache() {
+    return new AuthorizationRequestCache();
   }
 
   @Bean
