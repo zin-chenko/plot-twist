@@ -29,7 +29,8 @@ public class ClientRegistrationConfig {
       @Value("${auth.bootstrap.enabled:false}") boolean bootstrapEnabled,
       @Value("${auth.machine-client.enabled:false}") boolean machineEnabled,
       @Value("${auth.redirect-uri}") String redirectUri,
-      @Value("${auth.browser-redirect-uri:}") String browserRedirectUri) {
+      @Value("${auth.browser-redirect-uri:}") String browserRedirectUri,
+      @Value("${auth.browser-session-duration:4h}") Duration browserSessionDuration) {
     return args -> {
       if (bootstrapEnabled && !users.userExists(username)) {
         users.createUser(
@@ -65,7 +66,7 @@ public class ClientRegistrationConfig {
                   TokenSettings.builder().accessTokenTimeToLive(Duration.ofMinutes(5)).build())
               .build());
       if (!browserRedirectUri.isBlank())
-        clients.save(BrowserClientFactory.create(browserRedirectUri));
+        clients.save(BrowserClientFactory.create(browserRedirectUri, browserSessionDuration));
     };
   }
 }

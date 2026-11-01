@@ -56,7 +56,8 @@ auth.machine-client.enabled: ${AUTH_MACHINE_CLIENT_ENABLED:false}
 auth.auto-create-key: ${AUTH_AUTO_CREATE_KEY:false}
 auth.mail-from: ${MAIL_FROM:noreply@localhost}
 spring.session.jdbc.initialize-schema: never
-spring.session.timeout: 30m
+spring.session.timeout: ${AUTH_SESSION_DURATION:4h}
+auth.browser-session-duration: ${AUTH_SESSION_DURATION:4h}
 spring.mail.host: ${SMTP_HOST:localhost}
 spring.mail.port: ${SMTP_PORT:587}
 spring.mail.username: ${SMTP_USERNAME:}

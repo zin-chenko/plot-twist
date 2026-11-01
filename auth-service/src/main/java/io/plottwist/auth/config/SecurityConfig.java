@@ -2,8 +2,11 @@ package io.plottwist.auth.config;
 
 import io.plottwist.auth.oauth.infrastructure.security.BrowserRedirectValidator;
 import io.plottwist.auth.oauth.infrastructure.web.AuthorizationRequestCache;
+import io.plottwist.auth.oauth.infrastructure.web.BrowserReauthenticationFilter;
 import io.plottwist.auth.oauth.infrastructure.web.TokenEndpointTransactions;
 import io.plottwist.auth.security.web.AuthWorkLimiter;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -19,6 +22,7 @@ import org.springframework.security.oauth2.server.authorization.settings.*;
 import org.springframework.security.oauth2.server.authorization.token.*;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
@@ -30,7 +34,8 @@ public class SecurityConfig {
       HttpSecurity http,
       AuthWorkLimiter limiter,
       TokenEndpointTransactions tokenTransactions,
-      RequestCache requestCache)
+      RequestCache requestCache,
+      RegisteredClientRepository clients)
       throws Exception {
     var server = OAuth2AuthorizationServerConfigurer.authorizationServer();
     java.util.function.Consumer<OAuth2AuthorizationCodeRequestAuthenticationContext>
@@ -38,6 +43,9 @@ public class SecurityConfig {
     return http.addFilterBefore(
             limiter, org.springframework.security.web.context.SecurityContextHolderFilter.class)
         .addFilterAfter(tokenTransactions, AuthWorkLimiter.class)
+        .addFilterAfter(
+            new BrowserReauthenticationFilter(requestCache, clients),
+            org.springframework.security.web.context.SecurityContextHolderFilter.class)
         .securityMatcher(server.getEndpointsMatcher())
         .requestCache(cache -> cache.requestCache(requestCache))
         .with(
@@ -91,9 +99,15 @@ public class SecurityConfig {
 
   @Bean
   @Order(3)
-  SecurityFilterChain login(HttpSecurity http, AuthWorkLimiter limiter, RequestCache requestCache)
+  SecurityFilterChain login(
+      HttpSecurity http,
+      AuthWorkLimiter limiter,
+      RequestCache requestCache,
+      @Value("${auth.browser-session-duration:4h}") Duration sessionDuration)
       throws Exception {
     // CSRF is enabled for the login form and session-backed user interaction.
+    var success = new SavedRequestAwareAuthenticationSuccessHandler();
+    success.setRequestCache(requestCache);
     return http.requestCache(cache -> cache.requestCache(requestCache))
         .addFilterBefore(
             limiter, org.springframework.security.web.context.SecurityContextHolderFilter.class)
@@ -110,8 +124,16 @@ public class SecurityConfig {
                     .authenticated())
         .formLogin(
             form ->
-                form.failureHandler(
-                    (request, response, error) -> response.sendRedirect("/login?error")))
+                form.successHandler(
+                        (request, response, authentication) -> {
+                          // Existing JDBC sessions retain their old timeout until a fresh login.
+                          request
+                              .getSession()
+                              .setMaxInactiveInterval(Math.toIntExact(sessionDuration.toSeconds()));
+                          success.onAuthenticationSuccess(request, response, authentication);
+                        })
+                    .failureHandler(
+                        (request, response, error) -> response.sendRedirect("/login?error")))
         .build();
   }
 

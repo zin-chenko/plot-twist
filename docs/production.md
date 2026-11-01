@@ -73,6 +73,8 @@ The read benchmark is bounded to at most 40 RPS/60 seconds from one process. It 
 
 ## Failure/release boundaries
 
-JWT revocation is bounded by its five-minute lifetime plus configured clock skew. A stronger requirement needs an explicit revocation/introspection design. Public native clients have no refresh token; renew through PKCE while the login session is valid. CLI logout removes its local token, not every browser login session.
+JWT revocation is bounded by the access-token lifetime plus configured clock skew: five minutes for machine/native clients, `AUTH_SESSION_DURATION` (four hours by default) for the browser. A stronger requirement needs an explicit revocation/introspection design. Public native clients have no refresh token; renew through PKCE while the login session is valid. CLI logout removes its local token, not every browser login session.
 
 One host, one PostgreSQL instance and one TLS ingress remain single points of failure. Multi-host HA, a managed key rotation policy with overlapping JWKS, real provider validation, load/soak testing and an off-host restore drill are required before claiming their guarantees. The supplied code/config does not claim those operations have happened.
+
+Browser session/access lifetime is configured with `AUTH_SESSION_DURATION=4h` in `.env.production` (range `1m`–`12h`). Recreate auth-service and sign in again to apply it to a new token. See [session semantics and revocation limits](auth.md#продолжительность-браузерной-сессии).

@@ -62,6 +62,23 @@ class AuthorizationRequestCacheTest {
   }
 
   @Test
+  void removesLoginPromptFromSavedContinuationButPreservesOAuthStateAndPkce() {
+    var request = request("GET", "/oauth2/authorize", new MockHttpSession());
+    request.addParameter("prompt", "login");
+    request.addParameter("state", "original");
+    request.addParameter("code_challenge", "challenge");
+    request.addParameter("redirect_uri", "http://localhost:4200/auth/callback");
+    request.setQueryString(
+        "prompt=login&state=original&code_challenge=challenge&redirect_uri=http%3A%2F%2Flocalhost%3A4200%2Fauth%2Fcallback");
+    cache.saveRequest(request, response);
+    var saved = cache.getRequest(request, response);
+    assertFalse(saved.getRedirectUrl().contains("prompt="));
+    assertFalse(saved.getParameterMap().containsKey("prompt"));
+    assertEquals("original", saved.getParameterMap().get("state")[0]);
+    assertTrue(saved.getRedirectUrl().contains("code_challenge=challenge"));
+  }
+
+  @Test
   void supportsServletContextPaths() {
     var request = request("GET", "/auth/oauth2/authorize", new MockHttpSession());
     request.setContextPath("/auth");

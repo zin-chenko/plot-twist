@@ -27,6 +27,29 @@ class BrowserClientTest {
   }
 
   @Test
+  void defaultsToFourHoursAndAcceptsBoundedConfiguredSessionDuration() {
+    assertEquals(
+        java.time.Duration.ofHours(4),
+        BrowserClientFactory.create("https://app.example.com/auth/callback")
+            .getTokenSettings()
+            .getAccessTokenTimeToLive());
+    assertEquals(
+        java.time.Duration.ofHours(2),
+        BrowserClientFactory.create(
+                "https://app.example.com/auth/callback", java.time.Duration.ofHours(2))
+            .getTokenSettings()
+            .getAccessTokenTimeToLive());
+    for (var invalid :
+        java.util.List.of(
+            java.time.Duration.ZERO,
+            java.time.Duration.ofSeconds(59),
+            java.time.Duration.ofHours(13)))
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> BrowserClientFactory.create("https://app.example.com/auth/callback", invalid));
+  }
+
+  @Test
   void acceptsBothExactHttpLoopbackOriginsWithTheConfiguredPortAndPath() {
     for (String host : new String[] {"localhost", "127.0.0.1"}) {
       var client = BrowserClientFactory.create("http://" + host + ":4300/auth/callback");

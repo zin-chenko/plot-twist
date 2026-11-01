@@ -12,6 +12,15 @@ public final class BrowserClientFactory {
   private BrowserClientFactory() {}
 
   public static RegisteredClient create(String redirectUri) {
+    return create(redirectUri, Duration.ofHours(4));
+  }
+
+  public static RegisteredClient create(String redirectUri, Duration sessionDuration) {
+    if (sessionDuration == null
+        || sessionDuration.compareTo(Duration.ofMinutes(1)) < 0
+        || sessionDuration.compareTo(Duration.ofHours(12)) > 0)
+      throw new IllegalArgumentException(
+          "Browser session duration must be between 1 minute and 12 hours");
     var uri = java.net.URI.create(redirectUri);
     if (!("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
         || uri.getHost() == null
@@ -35,8 +44,7 @@ public final class BrowserClientFactory {
                     .requireProofKey(true)
                     .requireAuthorizationConsent(false)
                     .build())
-            .tokenSettings(
-                TokenSettings.builder().accessTokenTimeToLive(Duration.ofMinutes(5)).build());
+            .tokenSettings(TokenSettings.builder().accessTokenTimeToLive(sessionDuration).build());
     // Two exact loopback origins for local development; never wildcard production redirects.
     String aliasHost =
         "localhost".equalsIgnoreCase(uri.getHost())
