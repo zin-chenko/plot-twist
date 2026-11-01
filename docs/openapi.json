@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT."
   },
   "servers": [
@@ -901,6 +901,15 @@
               "default": false
             },
             "description": "Only stories by the current account."
+          },
+          {
+            "name": "liked",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Only stories currently liked (+1) by the JWT account, newest publication first. Can be combined with mine. Dislikes/removed votes do not appear."
           }
         ]
       },
@@ -1360,6 +1369,12 @@
                   "type": "string"
                 },
                 "description": "no-store"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted comment version."
               }
             }
           },
@@ -1428,6 +1443,211 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        }
+      },
+      "get": {
+        "operationId": "getStoryComment",
+        "summary": "Read a comment and its current version",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comment",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted comment version for If-Match."
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryComment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateStoryComment",
+        "summary": "Edit own comment with optimistic concurrency",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\"[0-9]{1,18}\"$"
+            },
+            "description": "Comment ETag/version, not the story version."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Comment",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted comment version for If-Match."
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryComment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          },
+          "412": {
+            "description": "Comment changed; fetch fresh version and reconcile draft"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/api/v1/stories/{id}/author/photo": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getStoryAuthorPhoto",
+        "summary": "Read the active author avatar for an existing story",
+        "description": "Verified users only. Returns sanitized JPEG, never the private profile or S3 key. A missing story/profile/photo returns 404.",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG avatar",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid UUID, text, page size/cursor or unsupported fields"
@@ -1742,7 +1962,8 @@
           "likes",
           "dislikes",
           "myReaction",
-          "commentCount"
+          "commentCount",
+          "authorPhotoSha256"
         ],
         "properties": {
           "id": {
@@ -1799,6 +2020,14 @@
           "commentCount": {
             "type": "integer",
             "minimum": 0
+          },
+          "authorPhotoSha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Active author avatar fingerprint, or null. Download only through the authenticated story author/photo endpoint."
           }
         }
       },
@@ -1811,7 +2040,9 @@
           "authorId",
           "authorName",
           "body",
-          "createdAt"
+          "createdAt",
+          "version",
+          "updatedAt"
         ],
         "properties": {
           "id": {
@@ -1837,6 +2068,14 @@
             "maxLength": 2000
           },
           "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updatedAt": {
             "type": "string",
             "format": "date-time"
           }

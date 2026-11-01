@@ -18,7 +18,7 @@ public class StoryGateway {
     this.backend = backend;
   }
 
-  @GetMapping({"", "/{id}", "/{id}/comments"})
+  @GetMapping({"", "/{id}", "/{id}/comments", "/{id}/comments/{commentId}", "/{id}/author/photo"})
   ResponseEntity<byte[]> get(@AuthenticationPrincipal Jwt jwt, HttpServletRequest request) {
     return relay(jwt, request, null);
   }
@@ -32,7 +32,7 @@ public class StoryGateway {
   }
 
   @PutMapping(
-      value = {"/{id}", "/{id}/reaction"},
+      value = {"/{id}", "/{id}/reaction", "/{id}/comments/{commentId}"},
       consumes = MediaType.APPLICATION_JSON_VALUE)
   ResponseEntity<byte[]> put(
       @AuthenticationPrincipal Jwt jwt, HttpServletRequest request, @RequestBody JsonNode body) {

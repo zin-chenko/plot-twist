@@ -7,6 +7,7 @@ public record Story(
     UUID id,
     UUID authorId,
     String authorName,
+    String authorPhotoSha256,
     String title,
     String body,
     long version,

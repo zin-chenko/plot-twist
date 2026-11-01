@@ -4,4 +4,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record StoryComment(
-    UUID id, UUID storyId, UUID authorId, String authorName, String body, Instant createdAt) {}
+    UUID id,
+    UUID storyId,
+    UUID authorId,
+    String authorName,
+    String body,
+    Instant createdAt,
+    Instant updatedAt,
+    long version) {}

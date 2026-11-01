@@ -1,6 +1,7 @@
 package io.plottwist.domain.story.api;
 
 import io.plottwist.domain.story.api.request.*;
+import io.plottwist.domain.story.application.StoryAuthorPhotos;
 import io.plottwist.domain.story.application.StoryService;
 import io.plottwist.domain.story.model.*;
 import jakarta.validation.Valid;
@@ -16,25 +17,41 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/stories")
 public class StoryController {
   private final StoryService stories;
+  private final StoryAuthorPhotos photos;
 
-  public StoryController(StoryService stories) {
+  public StoryController(StoryService stories, StoryAuthorPhotos photos) {
     this.stories = stories;
+    this.photos = photos;
   }
 
   @GetMapping
   ResponseEntity<FeedPage<Story>> feed(
       @AuthenticationPrincipal Jwt jwt,
       @RequestParam(defaultValue = "false") boolean mine,
+      @RequestParam(defaultValue = "false") boolean liked,
       @RequestParam(required = false) String cursor,
       @RequestParam(defaultValue = "10") int limit) {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(stories.feed(AccountIdentity.require(jwt), mine, cursor, limit));
+        .body(stories.feed(AccountIdentity.require(jwt), mine, liked, cursor, limit));
   }
 
   @GetMapping("/{id}")
   ResponseEntity<Story> get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
     return response(stories.get(id, AccountIdentity.require(jwt)));
+  }
+
+  @GetMapping("/{id}/author/photo")
+  ResponseEntity<byte[]> authorPhoto(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+    AccountIdentity.require(jwt);
+    var photo = photos.metadata(id);
+    return ResponseEntity.ok()
+        .contentType(MediaType.IMAGE_JPEG)
+        .cacheControl(CacheControl.noStore())
+        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=author.jpg")
+        .header("X-Content-Type-Options", "nosniff")
+        .eTag(photo.sha256())
+        .body(photos.read(photo));
   }
 
   @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -93,6 +110,34 @@ public class StoryController {
     var comment = stories.comment(id, AccountIdentity.require(jwt), body.body());
     return ResponseEntity.created(URI.create("/api/v1/stories/" + id + "/comments/" + comment.id()))
         .cacheControl(CacheControl.noStore())
+        .eTag(Long.toString(comment.version()))
+        .body(comment);
+  }
+
+  @GetMapping("/{id}/comments/{commentId}")
+  ResponseEntity<StoryComment> getComment(
+      @AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @PathVariable UUID commentId) {
+    AccountIdentity.require(jwt);
+    var comment = stories.getComment(id, commentId);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .eTag(Long.toString(comment.version()))
+        .body(comment);
+  }
+
+  @PutMapping(value = "/{id}/comments/{commentId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+  ResponseEntity<StoryComment> editComment(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID id,
+      @PathVariable UUID commentId,
+      @RequestHeader(value = "If-Match", required = false) String match,
+      @Valid @RequestBody CommentRequest body) {
+    var comment =
+        stories.updateComment(
+            id, commentId, AccountIdentity.require(jwt), version(match), body.body());
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .eTag(Long.toString(comment.version()))
         .body(comment);
   }
 

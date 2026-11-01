@@ -4,7 +4,7 @@ import io.plottwist.domain.story.model.*;
 import java.util.*;
 
 public interface StoryRepository {
-  List<Story> feed(UUID viewer, UUID author, PagePosition before, int limit);
+  List<Story> feed(UUID viewer, UUID author, boolean liked, PagePosition before, int limit);
 
   Optional<Story> find(UUID id, UUID viewer);
 
@@ -21,6 +21,12 @@ public interface StoryRepository {
   List<StoryComment> comments(UUID story, PagePosition before, int limit);
 
   StoryComment comment(UUID id, UUID story, UUID author, String body);
+
+  Optional<StoryComment> findComment(UUID story, UUID comment);
+
+  boolean updateComment(UUID story, UUID comment, UUID author, long version, String body);
+
+  Optional<AuthorPhoto> authorPhoto(UUID story);
 
   Optional<UUID> commentAuthor(UUID story, UUID comment);
 

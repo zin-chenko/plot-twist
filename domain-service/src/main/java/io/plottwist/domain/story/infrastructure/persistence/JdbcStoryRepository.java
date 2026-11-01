@@ -13,12 +13,13 @@ public class JdbcStoryRepository implements StoryRepository {
   private final JdbcTemplate jdbc;
   private static final String SELECT =
       """
-      SELECT s.*, COALESCE(p.display_name,'Читатель') AS author_name,
+      SELECT s.*, COALESCE(p.display_name,'Читатель') AS author_name, m.sha256 AS author_photo_sha256,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=1) AS likes,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=-1) AS dislikes,
       COALESCE((SELECT r.value FROM story_reactions r WHERE r.story_id=s.id AND r.account_id=?),0) AS my_reaction,
       (SELECT count(*) FROM story_comments c WHERE c.story_id=s.id) AS comment_count
       FROM stories s LEFT JOIN user_profiles p ON p.account_id=s.author_id
+      LEFT JOIN media_objects m ON m.id=p.photo_id AND m.state='ACTIVE'
       """;
 
   public JdbcStoryRepository(JdbcTemplate jdbc) {
@@ -26,10 +27,15 @@ public class JdbcStoryRepository implements StoryRepository {
   }
 
   @Override
-  public List<Story> feed(UUID viewer, UUID author, PagePosition before, int limit) {
+  public List<Story> feed(UUID viewer, UUID author, boolean liked, PagePosition before, int limit) {
     String sql = SELECT + " WHERE true";
     var args = new ArrayList<Object>();
     args.add(viewer);
+    if (liked) {
+      sql +=
+          " AND EXISTS (SELECT 1 FROM story_reactions liked WHERE liked.story_id=s.id AND liked.account_id=? AND liked.value=1)";
+      args.add(viewer);
+    }
     if (author != null) {
       sql += " AND s.author_id=?";
       args.add(author);
@@ -128,6 +134,41 @@ public class JdbcStoryRepository implements StoryRepository {
   }
 
   @Override
+  public Optional<StoryComment> findComment(UUID story, UUID comment) {
+    return jdbc
+        .query(
+            "SELECT c.*,COALESCE(p.display_name,'Читатель') AS author_name FROM story_comments c LEFT JOIN user_profiles p ON p.account_id=c.author_id WHERE c.story_id=? AND c.id=?",
+            this::comment,
+            story,
+            comment)
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public boolean updateComment(UUID story, UUID comment, UUID author, long version, String body) {
+    return jdbc.update(
+            "UPDATE story_comments SET body=?,version=version+1,updated_at=now() WHERE story_id=? AND id=? AND author_id=? AND version=?",
+            body,
+            story,
+            comment,
+            author,
+            version)
+        == 1;
+  }
+
+  @Override
+  public Optional<AuthorPhoto> authorPhoto(UUID story) {
+    return jdbc
+        .query(
+            "SELECT m.object_key,m.sha256 FROM stories s JOIN user_profiles p ON p.account_id=s.author_id JOIN media_objects m ON m.id=p.photo_id AND m.state='ACTIVE' WHERE s.id=?",
+            (row, n) -> new AuthorPhoto(row.getString("object_key"), row.getString("sha256")),
+            story)
+        .stream()
+        .findFirst();
+  }
+
+  @Override
   public Optional<UUID> commentAuthor(UUID story, UUID comment) {
     return jdbc
         .queryForList(
@@ -154,6 +195,7 @@ public class JdbcStoryRepository implements StoryRepository {
         r.getObject("id", UUID.class),
         r.getObject("author_id", UUID.class),
         r.getString("author_name"),
+        r.getString("author_photo_sha256"),
         r.getString("title"),
         r.getString("body"),
         r.getLong("version"),
@@ -172,6 +214,8 @@ public class JdbcStoryRepository implements StoryRepository {
         r.getObject("author_id", UUID.class),
         r.getString("author_name"),
         r.getString("body"),
-        r.getTimestamp("created_at").toInstant());
+        r.getTimestamp("created_at").toInstant(),
+        r.getTimestamp("updated_at").toInstant(),
+        r.getLong("version"));
   }
 }

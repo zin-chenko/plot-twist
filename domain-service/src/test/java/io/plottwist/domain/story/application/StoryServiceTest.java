@@ -59,7 +59,8 @@ class StoryServiceTest {
         position, FeedCursor.decode(FeedCursor.encode(position.createdAt(), position.id())));
     for (String bad : List.of("", "not-a-cursor", "x".repeat(181)))
       assertThrows(StoryException.class, () -> FeedCursor.decode(bad));
-    assertThrows(StoryException.class, () -> service.feed(UUID.randomUUID(), false, null, 21));
+    assertThrows(
+        StoryException.class, () -> service.feed(UUID.randomUUID(), false, false, null, 21));
   }
 
   @Test
@@ -73,8 +74,39 @@ class StoryServiceTest {
     verify(repository, never()).deleteComment(any(), any(), any());
   }
 
+  @Test
+  void refusesForeignCommentEditsAndStaleVersions() {
+    UUID story = UUID.randomUUID(),
+        comment = UUID.randomUUID(),
+        author = UUID.randomUUID(),
+        other = UUID.randomUUID();
+    when(repository.findComment(story, comment))
+        .thenReturn(
+            Optional.of(
+                new StoryComment(
+                    comment, story, author, "Author", "Body", Instant.now(), Instant.now(), 0)));
+    assertEquals(
+        StoryException.Reason.FORBIDDEN,
+        assertThrows(
+                StoryException.class,
+                () -> service.updateComment(story, comment, other, 0, "Stolen"))
+            .reason());
+    verify(repository, never()).updateComment(any(), any(), eq(other), anyLong(), anyString());
+    assertEquals(
+        StoryException.Reason.VERSION_CHANGED,
+        assertThrows(
+                StoryException.class,
+                () -> service.updateComment(story, comment, author, 0, "New text"))
+            .reason());
+    assertEquals(
+        StoryException.Reason.INVALID_INPUT,
+        assertThrows(
+                StoryException.class, () -> service.updateComment(story, comment, author, 0, " "))
+            .reason());
+  }
+
   private Story story(UUID id, UUID author) {
     return new Story(
-        id, author, "Name", "Title", "Body", 0, Instant.now(), Instant.now(), 0, 0, 0, 0);
+        id, author, "Name", null, "Title", "Body", 0, Instant.now(), Instant.now(), 0, 0, 0, 0);
   }
 }

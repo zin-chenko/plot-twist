@@ -39,7 +39,10 @@ public class SecurityConfig {
                         HttpMethod.POST, "/api/v1/stories", "/api/v1/stories/*/comments")
                     .hasAuthority("SCOPE_api.write")
                     .requestMatchers(
-                        HttpMethod.PUT, "/api/v1/stories/*", "/api/v1/stories/*/reaction")
+                        HttpMethod.PUT,
+                        "/api/v1/stories/*",
+                        "/api/v1/stories/*/reaction",
+                        "/api/v1/stories/*/comments/*")
                     .hasAuthority("SCOPE_api.write")
                     .requestMatchers(
                         HttpMethod.DELETE, "/api/v1/stories/*", "/api/v1/stories/*/comments/*")

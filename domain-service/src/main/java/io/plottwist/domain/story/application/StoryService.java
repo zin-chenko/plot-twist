@@ -16,9 +16,10 @@ public class StoryService {
     this.stories = stories;
   }
 
-  public FeedPage<Story> feed(UUID viewer, boolean mine, String cursor, int limit) {
+  public FeedPage<Story> feed(UUID viewer, boolean mine, boolean liked, String cursor, int limit) {
     checkLimit(limit);
-    var rows = stories.feed(viewer, mine ? viewer : null, FeedCursor.decode(cursor), limit + 1);
+    var rows =
+        stories.feed(viewer, mine ? viewer : null, liked, FeedCursor.decode(cursor), limit + 1);
     var items = List.copyOf(rows.subList(0, Math.min(limit, rows.size())));
     var last = items.isEmpty() ? null : items.getLast();
     return new FeedPage<>(
@@ -76,6 +77,21 @@ public class StoryService {
     body = text(body, 2000);
     lock(id);
     return stories.comment(UUID.randomUUID(), id, author, body);
+  }
+
+  public StoryComment getComment(UUID story, UUID comment) {
+    return stories
+        .findComment(story, comment)
+        .orElseThrow(() -> new StoryException(NOT_FOUND, "Comment not found"));
+  }
+
+  @Transactional
+  public StoryComment updateComment(
+      UUID story, UUID comment, UUID author, long version, String body) {
+    own(getComment(story, comment).authorId(), author);
+    if (!stories.updateComment(story, comment, author, version, text(body, 2000)))
+      throw new StoryException(VERSION_CHANGED, "Comment changed; reload before editing");
+    return getComment(story, comment);
   }
 
   @Transactional

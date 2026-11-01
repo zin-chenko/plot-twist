@@ -5,6 +5,8 @@ import json
 import os
 import re
 import secrets
+import struct
+import zlib
 import time
 import uuid
 from urllib.error import HTTPError
@@ -59,6 +61,14 @@ def mail_code(address, subject):
         time.sleep(1)
     raise AssertionError('Expected verification/reset email was not delivered')
 
+def png():
+    def chunk(kind, data):
+        return struct.pack('!I', len(data)) + kind + data + struct.pack('!I', zlib.crc32(kind + data) & 0xffffffff)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!IIBBBBB', 2, 2, 8, 2, 0, 0, 0))
+            + chunk(b'tEXt', b'Comment\x00PRIVATE_METADATA_MARKER')
+            + chunk(b'IDAT', zlib.compress(b'\x00\xff\x00\x00\x00\xff\x00' * 2)) + chunk(b'IEND', b''))
+
+
 def account():
     address = 'e2e-' + uuid.uuid4().hex + '@example.test'
     password = 'Test-' + secrets.token_urlsafe(24)
@@ -110,6 +120,16 @@ def check():
         request('PUT','/api/v1/profile',private_profile,author,{'If-None-Match':'*'},expected=201)
         named,_=request('GET',route,token=reader)
         assert named['authorName']=='Автор истории' and 'PRIVATE_' not in json.dumps(named)
+        request('GET',route+'/author/photo',token=reader,expected=404)
+        request('GET',route+'/author/photo',expected=401)
+        request('GET',route+'/author/photo',token=machine_token(),expected=403)
+        _,ph=request('GET','/api/v1/profile',token=author)
+        uploaded,_=request('PUT','/api/v1/profile/photo',png(),author,{'If-Match':ph['ETag'],'Content-Type':'application/octet-stream'})
+        named,_=request('GET',route,token=reader)
+        assert named['authorPhotoSha256']==uploaded['photo']['sha256']
+        avatar,ah=request('GET',route+'/author/photo',token=reader)
+        assert avatar.startswith(b'\xff\xd8') and ah['Content-Type']=='image/jpeg' and ah['Cache-Control']=='no-store'
+        assert b'PRIVATE_METADATA_MARKER' not in avatar
         # A single account can switch/remove its vote, never accumulate duplicates.
         for value in [1,1,-1,-1,0,0]:
             story,_=request('PUT',route+'/reaction',{'value':value},reader)
@@ -123,10 +143,43 @@ def check():
         # A different account has its own independent vote.
         story,_=request('PUT',route+'/reaction',{'value':1},author)
         assert story['likes']+story['dislikes']==2
+        request('PUT',route+'/reaction',{'value':1},reader)
+        second=path+'/'+created[1]
+        request('PUT',second+'/reaction',{'value':1},reader)
+        liked,_=request('GET',path+'?liked=true&limit=1',token=reader)
+        assert len(liked['items'])==1 and liked['items'][0]['id']==created[1] and liked['nextCursor']
+        tail,_=request('GET',path+'?liked=true&limit=1&cursor='+quote(liked['nextCursor']),token=reader)
+        assert [s['id'] for s in tail['items']]==[sid]
+        request('PUT',second+'/reaction',{'value':0},reader)
+        assert [s['id'] for s in request('GET',path+'?liked=true',token=reader)[0]['items']]==[sid]
+        request('PUT',route+'/reaction',{'value':-1},reader)
+        assert not request('GET',path+'?liked=true',token=reader)[0]['items']
+        assert [s['id'] for s in request('GET',path+'?liked=true',token=author)[0]['items']]==[sid]
         comments=[]
         for i in range(3):
             comment,_=request('POST',route+'/comments',{'body':f'Комментарий {i}'},reader,expected=201)
             comments.append(comment['id'])
+        comment_path=route+'/comments/'+comments[0]
+        current,ch=request('GET',comment_path,token=author)
+        assert current['version']==0 and ch['ETag']=='"0"'
+        request('PUT',comment_path,{'body':'Stolen'},author,{'If-Match':ch['ETag']},expected=403)
+        request('PUT',comment_path,{'body':'New'},reader,expected=428)
+        request('PUT',comment_path,{'body':' '},reader,{'If-Match':ch['ETag']},expected=400)
+        request('PUT',comment_path,{'body':'New','authorId':str(uuid.uuid4())},reader,{'If-Match':ch['ETag']},expected=400)
+        request('PUT',comment_path,{'body':'New'},read_only,{'If-Match':ch['ETag']},expected=403)
+        request('PUT',path+'/'+created[1]+'/comments/'+comments[0],{'body':'Wrong story'},reader,{'If-Match':ch['ETag']},expected=404)
+        def edit_comment(i):
+            try:
+                request('PUT',comment_path,{'body':f'Edited comment {i}'},reader,{'If-Match':ch['ETag']})
+                return 200
+            except AssertionError as error:
+                assert 'got 412' in str(error), str(error)
+                return 412
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            assert sorted(pool.map(edit_comment,range(2)))==[200,412]
+        updated,uh=request('GET',comment_path,token=author)
+        assert updated['version']==1 and uh['ETag']=='"1"' and updated['body'].startswith('Edited comment')
+        assert request('GET',route,token=author)[0]['commentCount']==3
         request('POST',route+'/comments',{'body':' '},reader,expected=400)
         request('DELETE',route+'/comments/'+comments[0],token=author,expected=403)
         page,_=request('GET',route+'/comments?limit=2',token=author)
@@ -152,6 +205,10 @@ def check():
         extreme=base64.urlsafe_b64encode(('+1000000000-12-31T23:59:59.999999999Z|'+str(uuid.uuid4())).encode()).decode().rstrip('=')
         request('GET',path+'?cursor='+extreme,token=reader,expected=400)
         assert not request('GET',path+'?mine=true',token=reader)[0]['items']
+        _,ph=request('GET','/api/v1/profile',token=author)
+        request('DELETE','/api/v1/profile/photo',token=author,headers={'If-Match':ph['ETag']})
+        assert request('GET',route,token=reader)[0]['authorPhotoSha256'] is None
+        request('GET',route+'/author/photo',token=reader,expected=404)
         # Deleting a story removes its discussion/reactions as well.
         current,h=request('GET',route,token=author)
         request('DELETE',route,token=author,headers={'If-Match':h['ETag']},expected=204)
@@ -160,7 +217,7 @@ def check():
         request('PUT',route+'/reaction',{'value':1},reader,expected=404)
         request('POST',route+'/comments',{'body':'Gone'},reader,expected=404)
         request('DELETE',route+'/comments/'+comments[-1],token=reader,expected=404)
-        print('PASS: real registration/login; private keyset feed; author-only edits/deletes; lost-update prevention; concurrent unique votes; comments and cascade deletion')
+        print('PASS: real registration/login; private keyset feed; author-only edits/deletes; lost-update prevention; concurrent unique votes; comment edits/CAS; personal liked feed; authenticated author photos; cascade deletion')
     finally:
         for sid in created:
             try:
