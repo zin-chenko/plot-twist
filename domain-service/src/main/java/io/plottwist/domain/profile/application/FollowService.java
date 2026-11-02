@@ -29,18 +29,23 @@ public class FollowService {
   }
 
   public FollowPage members(
-      UUID viewer, UUID account, boolean followers, String cursor, int limit) {
+      UUID viewer, UUID account, boolean followers, String cursor, int limit, String query) {
     if (limit < 1 || limit > 20)
       throw new ProfileException(
           ProfileException.Reason.INVALID_INPUT, "Page size must be between 1 and 20");
-    var before = FollowCursor.decode(cursor, account, followers);
+    String search = query == null ? "" : query.strip();
+    if (search.length() > 80 || search.indexOf(0) >= 0)
+      throw new ProfileException(
+          ProfileException.Reason.INVALID_INPUT,
+          "Search must be at most 80 characters without NUL");
+    var before = FollowCursor.decode(cursor, account, followers, search);
     if (!viewer.equals(account)) profiles.publicProfile(account);
-    var rows = follows.members(viewer, account, followers, before, limit + 1);
+    var rows = follows.members(viewer, account, followers, before, limit + 1, search);
     var page = rows.subList(0, Math.min(limit, rows.size()));
     return new FollowPage(
         page.stream().map(row -> row.user()).toList(),
         rows.size() > limit
-            ? FollowCursor.encode(account, followers, page.getLast().position())
+            ? FollowCursor.encode(account, followers, page.getLast().position(), search)
             : null);
   }
 }

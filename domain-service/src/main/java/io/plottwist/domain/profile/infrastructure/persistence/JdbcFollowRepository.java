@@ -53,7 +53,12 @@ public class JdbcFollowRepository implements FollowRepository {
   }
 
   public List<FollowMember> members(
-      UUID viewer, UUID account, boolean followers, FollowPosition before, int limit) {
+      UUID viewer,
+      UUID account,
+      boolean followers,
+      FollowPosition before,
+      int limit,
+      String query) {
     String member = followers ? "f.follower_id" : "f.following_id";
     String owner = followers ? "f.following_id" : "f.follower_id";
     String sql =
@@ -71,6 +76,10 @@ public class JdbcFollowRepository implements FollowRepository {
     var args = new ArrayList<Object>();
     args.add(viewer);
     args.add(account);
+    if (!query.isEmpty()) {
+      sql += " AND COALESCE(p.display_name,'Читатель') ILIKE ?";
+      args.add("%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
+    }
     if (before != null) {
       sql += " AND (f.created_at," + member + ") < (?,?)";
       args.add(OffsetDateTime.ofInstant(before.createdAt(), ZoneOffset.UTC));

@@ -14,5 +14,5 @@ public interface FollowRepository {
   FollowState state(UUID viewer, UUID target);
 
   List<FollowMember> members(
-      UUID viewer, UUID account, boolean followers, FollowPosition before, int limit);
+      UUID viewer, UUID account, boolean followers, FollowPosition before, int limit, String query);
 }

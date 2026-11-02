@@ -158,4 +158,22 @@ class PublicProfileGatewayTest {
               HttpMethod.GET, route + "?limit=2&cursor=opaque-page", "token", Map.of(), null, null);
     }
   }
+
+  @Test
+  void connectionSearchEncodesCyrillicPlusAndReservedCharactersAsOneValue() throws Exception {
+    String route = "/api/v1/profiles/" + author + "/followers";
+    String query = "Анна + & 100%_";
+    String path =
+        org.springframework.web.util.UriComponentsBuilder.fromPath(route)
+            .queryParam("limit", 20)
+            .queryParam("q", "{search}")
+            .encode()
+            .buildAndExpand(query)
+            .toUriString();
+    when(domain.exchange(HttpMethod.GET, path, "token", Map.of(), null, null))
+        .thenReturn(ResponseEntity.ok().body("{}".getBytes()));
+    mvc.perform(get(route).with(user()).param("q", query)).andExpect(status().isOk());
+    verify(domain).exchange(HttpMethod.GET, path, "token", Map.of(), null, null);
+    org.junit.jupiter.api.Assertions.assertTrue(path.contains("%2B"));
+  }
 }

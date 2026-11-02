@@ -73,7 +73,8 @@ public class PublicProfileGateway {
       @PathVariable UUID account,
       jakarta.servlet.http.HttpServletRequest request,
       @RequestParam(required = false) String cursor,
-      @RequestParam(defaultValue = "20") int limit) {
+      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(required = false, name = "q") String query) {
     requireUser(jwt);
     var uri =
         UriComponentsBuilder.fromPath(
@@ -83,10 +84,18 @@ public class PublicProfileGateway {
                         ? "/followers"
                         : "/following"))
             .queryParam("limit", limit);
-    if (cursor != null) uri.queryParam("cursor", cursor);
+    var values = new LinkedHashMap<String, Object>();
+    if (cursor != null) {
+      uri.queryParam("cursor", "{cursor}");
+      values.put("cursor", cursor);
+    }
+    if (query != null) {
+      uri.queryParam("q", "{search}");
+      values.put("search", query);
+    }
     return domain.exchange(
         HttpMethod.GET,
-        uri.build().encode().toUriString(),
+        uri.encode().buildAndExpand(values).toUriString(),
         jwt.getTokenValue(),
         Map.of(),
         null,

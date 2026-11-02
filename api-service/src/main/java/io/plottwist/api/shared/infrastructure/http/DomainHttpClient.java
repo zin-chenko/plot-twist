@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.util.DefaultUriBuilderFactory;
 
 @Component
 public class DomainHttpClient implements DomainBackend {
@@ -20,7 +21,10 @@ public class DomainHttpClient implements DomainBackend {
     var http = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
     var factory = new JdkClientHttpRequestFactory(http);
     factory.setReadTimeout(Duration.ofSeconds(20));
-    client = builder.baseUrl(url).requestFactory(factory).build();
+    // Relay paths already contain encoded query values; do not encode percent sequences twice.
+    var urls = new DefaultUriBuilderFactory(url);
+    urls.setEncodingMode(DefaultUriBuilderFactory.EncodingMode.NONE);
+    client = builder.uriBuilderFactory(urls).requestFactory(factory).build();
   }
 
   @Override

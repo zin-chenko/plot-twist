@@ -18,9 +18,11 @@ class MediaAccessTest {
     var ticket = signer.issue(asset, viewer);
     assertEquals(viewer, signer.verify(asset, ticket));
     assertThrows(AttachmentException.class, () -> signer.verify(UUID.randomUUID(), ticket));
-    assertThrows(
-        AttachmentException.class,
-        () -> signer.verify(asset, ticket.substring(0, ticket.length() - 2) + "xx"));
+    var parts = ticket.split("\\.");
+    var signature = Base64.getUrlDecoder().decode(parts[1]);
+    signature[0] ^= 1;
+    var forged = parts[0] + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(signature);
+    assertThrows(AttachmentException.class, () -> signer.verify(asset, forged));
     assertThrows(
         AttachmentException.class,
         () ->

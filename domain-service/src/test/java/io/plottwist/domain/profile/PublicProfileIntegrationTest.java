@@ -682,4 +682,82 @@ class PublicProfileIntegrationTest {
       jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
     }
   }
+
+  @Test
+  void connectionSearchIsCaseInsensitiveLiteralAndBoundToItsPaginationCursor() throws Exception {
+    profile();
+    jdbc.update(
+        "INSERT INTO user_profiles(account_id,display_name,given_name) VALUES(?,?,'PRIVATE_NAME')",
+        reader,
+        "Анна_100%+");
+    jdbc.update(
+        "INSERT INTO user_profiles(account_id,display_name) VALUES(?,?)", other, "АннаX100Z");
+    follow(reader, author, true);
+    follow(other, author, true);
+    jdbc.update(
+        "UPDATE user_follows SET created_at=TIMESTAMPTZ '2026-01-01T00:00:00Z' WHERE following_id=?",
+        author);
+    String path = "/api/v1/profiles/" + author + "/followers";
+    var first =
+        json.readTree(
+            mvc.perform(get(path).with(user(author)).param("q", "анна").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray());
+    String cursor = first.get("nextCursor").asText();
+    var second =
+        json.readTree(
+            mvc.perform(
+                    get(path)
+                        .with(user(author))
+                        .param("q", "анна")
+                        .param("limit", "1")
+                        .param("cursor", cursor))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray());
+    assertEquals(1, second.get("items").size());
+    assertNotEquals(
+        first.get("items").get(0).get("accountId"), second.get("items").get(0).get("accountId"));
+    mvc.perform(get(path).with(user(author)).param("q", "Анна").param("cursor", cursor))
+        .andExpect(status().isBadRequest());
+    for (String literal : List.of("_", "%", "+", "  100%  ")) {
+      var result =
+          json.readTree(
+              mvc.perform(get(path).with(user(author)).param("q", literal))
+                  .andExpect(status().isOk())
+                  .andReturn()
+                  .getResponse()
+                  .getContentAsByteArray());
+      assertEquals(1, result.get("items").size());
+      assertEquals(reader.toString(), result.get("items").get(0).get("accountId").asText());
+    }
+    for (String absent : List.of("PRIVATE", "Автор")) {
+      var result =
+          json.readTree(
+              mvc.perform(get(path).with(user(author)).param("q", absent))
+                  .andExpect(status().isOk())
+                  .andReturn()
+                  .getResponse()
+                  .getContentAsByteArray());
+      assertTrue(result.get("items").isEmpty());
+    }
+    for (String invalid : List.of("x".repeat(81), "bad\u0000name"))
+      mvc.perform(get(path).with(user(author)).param("q", invalid))
+          .andExpect(status().isBadRequest());
+    String legacy =
+        Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(
+                ("1|"
+                        + author
+                        + "|followers|2026-01-01T00:00:00Z|"
+                        + first.get("items").get(0).get("accountId").asText())
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    mvc.perform(get(path).with(user(author)).param("cursor", legacy)).andExpect(status().isOk());
+    mvc.perform(get(path).with(user(author)).param("cursor", legacy).param("q", "анна"))
+        .andExpect(status().isBadRequest());
+  }
 }

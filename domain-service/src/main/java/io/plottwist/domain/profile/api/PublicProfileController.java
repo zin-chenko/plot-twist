@@ -43,10 +43,11 @@ public class PublicProfileController {
       @AuthenticationPrincipal Jwt jwt,
       @PathVariable UUID account,
       @RequestParam(required = false) String cursor,
-      @RequestParam(defaultValue = "20") int limit) {
+      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(required = false, name = "q") String query) {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(follows.members(AccountIdentity.require(jwt), account, true, cursor, limit));
+        .body(follows.members(AccountIdentity.require(jwt), account, true, cursor, limit, query));
   }
 
   @GetMapping("/following")
@@ -54,10 +55,11 @@ public class PublicProfileController {
       @AuthenticationPrincipal Jwt jwt,
       @PathVariable UUID account,
       @RequestParam(required = false) String cursor,
-      @RequestParam(defaultValue = "20") int limit) {
+      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(required = false, name = "q") String query) {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(follows.members(AccountIdentity.require(jwt), account, false, cursor, limit));
+        .body(follows.members(AccountIdentity.require(jwt), account, false, cursor, limit, query));
   }
 
   @DeleteMapping("/follow")
