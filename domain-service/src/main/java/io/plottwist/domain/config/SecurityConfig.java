@@ -36,7 +36,10 @@ public class SecurityConfig {
                     .requestMatchers(HttpMethod.DELETE, "/api/v1/profile", "/api/v1/profile/photo")
                     .hasAuthority("SCOPE_api.write")
                     .requestMatchers(
-                        HttpMethod.POST, "/api/v1/stories", "/api/v1/stories/*/comments")
+                        HttpMethod.POST,
+                        "/api/v1/stories",
+                        "/api/v1/stories/*/comments",
+                        "/api/v1/stories/*/reading")
                     .hasAuthority("SCOPE_api.write")
                     .requestMatchers(
                         HttpMethod.PUT,

@@ -103,3 +103,5 @@ python3 scripts/test-profile.py
 Эта реорганизация касается исходного кода и сопровождаемости. Требования к HA, секретам, резервным копиям и эксплуатации описаны отдельно в [production runbook](production.md).
 
 Функция `story` владеет лентой, оценками и комментариями: HTTP DTO в `api/request`, сценарии/транзакции в `application`, чистые записи в `model`, PostgreSQL SQL в `infrastructure/persistence`. API-сервис использует общий транспортный порт в `shared/application/port` и HTTP-адаптер в `shared/infrastructure/http` для профиля и историй. [Контракт и конкурентность](stories.md).
+
+`recommendation` — отдельная функция domain-service с чистыми моделями, портами, JDBC/HTTP-адаптерами и фоновыми обработчиками. Story не вызывает recommendation напрямую: атомарность очереди обеспечивают SQL-триггеры. API identity helper перенесён в технический `config`, чтобы контроллеры функций не зависели друг от друга. [Подробности](recommendations.md).

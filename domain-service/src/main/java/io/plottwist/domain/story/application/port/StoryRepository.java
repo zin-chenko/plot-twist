@@ -6,6 +6,8 @@ import java.util.*;
 public interface StoryRepository {
   List<Story> feed(UUID viewer, UUID author, boolean liked, PagePosition before, int limit);
 
+  List<Story> findMany(List<UUID> ids, UUID viewer);
+
   Optional<Story> find(UUID id, UUID viewer);
 
   void create(UUID id, UUID author, StoryContent content);

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT."
   },
   "servers": [
@@ -1669,6 +1669,134 @@
           }
         }
       }
+    },
+    "/api/v1/recommendations": {
+      "get": {
+        "operationId": "getRecommendations",
+        "summary": "Personalized semantic recommendations with an explicit cold-start/fallback mode",
+        "description": "Qdrant retrieves candidates from locally computed E5 vectors. PostgreSQL rechecks visibility, story revision, current ratings and reading exclusions; no online inference is performed by this endpoint.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Private snapshot cursor, expires after 15 minutes; never reuse across accounts."
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Bypass the two-minute snapshot cache for the first page."
+          }
+        ],
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private ranked snapshot page",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid/expired/foreign cursor or page size"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Verified user account and api.read scope required"
+          },
+          "503": {
+            "description": "Source data store unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/stories/{id}/reading": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "recordStoryReading",
+        "summary": "Record a bounded, idempotent own reading signal",
+        "description": "Approximate client telemetry; not proof of reading. Repeated events within one day do not repeatedly increment the interest revision. Only completed reading is a positive seed.",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingSignal"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Recorded"
+          },
+          "400": {
+            "description": "Invalid duration or fields"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Verified user and api.write required"
+          },
+          "404": {
+            "description": "Story not found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2160,6 +2288,75 @@
             "maxLength": 180
           }
         }
+      },
+      "RecommendationPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "nextCursor",
+          "mode"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/Story"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "personalized",
+              "cold_start",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "ReadingSignal": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "completed",
+          "seconds"
+        ],
+        "properties": {
+          "completed": {
+            "type": "boolean"
+          },
+          "seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 600
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "completed": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "seconds": {
+                  "minimum": 20
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "securitySchemes": {

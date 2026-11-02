@@ -24,7 +24,7 @@ public class StoryGateway {
   }
 
   @PostMapping(
-      value = {"", "/{id}/comments"},
+      value = {"", "/{id}/comments", "/{id}/reading"},
       consumes = MediaType.APPLICATION_JSON_VALUE)
   ResponseEntity<byte[]> post(
       @AuthenticationPrincipal Jwt jwt, HttpServletRequest request, @RequestBody JsonNode body) {

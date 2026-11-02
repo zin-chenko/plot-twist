@@ -1,4 +1,4 @@
-package io.plottwist.domain.story.api;
+package io.plottwist.domain.config;
 
 import java.util.UUID;
 import org.springframework.http.HttpStatus;

@@ -44,3 +44,9 @@ storage:
   secret-key: ${S3_SECRET_KEY:}
   path-style: ${S3_PATH_STYLE:false}
 storage.use-environment-proxy: ${S3_USE_ENVIRONMENT_PROXY:false}
+
+recommendations:
+  enabled: ${RECOMMENDATIONS_ENABLED:true}
+  embedding-url: ${EMBEDDING_URL:http://localhost:8090}
+  vector-url: ${QDRANT_URL:http://localhost:6333}
+  vector-api-key: ${QDRANT_API_KEY:}

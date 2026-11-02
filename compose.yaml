@@ -4,6 +4,77 @@ x-log-config: &log-config
     max-size: "10m"
     max-file: "3"
 services:
+  model-download:
+    logging: *log-config
+    image: plot-twist-embeddings
+    build: ./embeddings-service
+    user: "0:0"
+    command: ["python", "/app/download_model.py"]
+    environment:
+      MODEL_DIRECTORY: /model
+      MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-main}
+    volumes: ["embedding-model:/model"]
+    networks: [model-download]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    restart: "no"
+  embeddings:
+    logging: *log-config
+    image: plot-twist-embeddings
+    build: ./embeddings-service
+    environment:
+      MODEL_DIRECTORY: /model
+      INFERENCE_THREADS: "2"
+    volumes: ["embedding-model:/model:ro"]
+    networks: [vectors]
+    depends_on:
+      model-download: {condition: service_completed_successfully}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1536m
+    cpus: 2
+    restart: unless-stopped
+  qdrant:
+    logging: *log-config
+    image: qdrant/qdrant:v1.17.0@sha256:f1c7272cdac52b38c1a0e89313922d940ba50afd90d593a1605dbbc214e66ffb
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -r /run/secrets/QDRANT_API_KEY ]; then
+          export QDRANT__SERVICE__API_KEY="$$(cat /run/secrets/QDRANT_API_KEY)"
+        fi
+        exec /qdrant/qdrant --config-path /qdrant/config/production.yaml
+    working_dir: /qdrant/storage
+    environment:
+      RUN_MODE: production
+      QDRANT__SERVICE__HOST: 0.0.0.0
+      QDRANT__STORAGE__STORAGE_PATH: /qdrant/storage
+      QDRANT__STORAGE__SNAPSHOTS_PATH: /qdrant/snapshots
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-plot-twist-vector-local-key}
+      QDRANT__TELEMETRY_DISABLED: "true"
+      QDRANT__LOG_LEVEL: WARN
+      QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS: "2"
+    volumes: ["qdrant-data:/qdrant/storage", "qdrant-snapshots:/qdrant/snapshots"]
+    networks: [vectors]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 2
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/6333; printf 'GET /readyz HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3; IFS= read -r status <&3; [[ \"$$status\" == *' 200 '* ]]"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
   monitoring-config:
     logging: *log-config
     image: alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
@@ -233,7 +304,10 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GK000000000000000000000000}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-1111111111111111111111111111111111111111111111111111111111111111}
       S3_PATH_STYLE: "true"
-    networks: [services, data, storage]
+      EMBEDDING_URL: http://embeddings:8090
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-plot-twist-vector-local-key}
+    networks: [services, data, storage, vectors]
     depends_on:
       postgres:
         condition: service_healthy
@@ -283,6 +357,9 @@ services:
         condition: service_healthy
     restart: "no"
 networks:
+  vectors:
+    internal: true
+  model-download:
   monitoring:
     # A regular bridge publishes the loopback-bound UI ports on the host.
   storage:
@@ -293,6 +370,9 @@ networks:
   data:
     internal: true
 volumes:
+  embedding-model:
+  qdrant-data:
+  qdrant-snapshots:
   prometheus-config:
   grafana-config:
   prometheus-data:

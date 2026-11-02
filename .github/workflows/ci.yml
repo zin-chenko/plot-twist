@@ -8,12 +8,13 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, pinned
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3, pinned
       - name: Validate OpenAPI
         run: |
+          python3 -O embeddings-service/test_integrity.py
           python3 -m venv /tmp/spec
           /tmp/spec/bin/pip install openapi-spec-validator==0.7.2
           /tmp/spec/bin/python -c 'import json; from openapi_spec_validator import validate_spec; validate_spec(json.load(open("docs/openapi.json")))'
@@ -24,13 +25,16 @@ jobs:
           docker compose --env-file .env.production.example -f compose.yaml -f compose.prod.yaml config --quiet
           docker compose --profile monitoring --env-file .env.production.example -f compose.yaml -f compose.prod.yaml config --quiet
       - name: Start isolated development stack
-        run: docker compose up -d --no-build --wait --wait-timeout 180
+        run: docker compose up -d --no-build --wait --wait-timeout 600
       - name: Exercise registration and private profile API
         run: |
           python3 scripts/smoke-test.py
           python3 scripts/test-auth.py --restart
           python3 scripts/test-profile.py
           python3 scripts/test-stories.py
+          python3 scripts/test-recommendations.py --semantic
+          docker compose exec -T embeddings python - < embeddings-service/test_model.py
+          docker compose run --rm --no-deps --entrypoint python -T embeddings - < scripts/test-vector-protocol.py
           python3 scripts/test-backup-restore.py
       - name: Verify provisioned monitoring and real HTTP histograms
         run: python3 scripts/test-monitoring.py

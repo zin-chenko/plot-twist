@@ -2,6 +2,7 @@ package io.plottwist.domain.story.api;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.plottwist.domain.config.AccountIdentity;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.Jwt;

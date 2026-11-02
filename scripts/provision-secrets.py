@@ -26,7 +26,7 @@ def main():
     values = {'pg-admin-password': secrets.token_urlsafe(32), 'auth-db-password': secrets.token_urlsafe(32),
               'domain-db-password': secrets.token_urlsafe(32), 'smtp-password': smtp,
               's3-access-key': access, 's3-secret-key': secret,
-              'grafana-admin-password': secrets.token_urlsafe(32)}
+              'grafana-admin-password': secrets.token_urlsafe(32), 'qdrant-api-key': secrets.token_urlsafe(32)}
     for name, value in values.items():
         fd = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as file:

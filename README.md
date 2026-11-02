@@ -16,13 +16,13 @@ Java 25 LTS, Spring Boot 3.5.16, Spring Authorization Server, JDBC/Flyway, Argon
 Нужны Docker и Docker Compose ≥ 2.24.4, для CLI и проверок — Python 3 без сторонних пакетов.
 
 ```sh
-docker compose up -d --build --wait --wait-timeout 180
+docker compose up -d --build --wait --wait-timeout 600
 python3 scripts/smoke-test.py
 python3 scripts/test-auth.py
 python3 scripts/test-profile.py
 ```
 
-Публичный вход: `http://localhost:8080`. Контракт: `docs/openapi.json` и HTTP `/openapi.json`. Приложение не публикует порты PostgreSQL, auth, domain и S3. `postgres-init` и `garage-init` должны завершиться с кодом 0; остальные контейнеры — быть healthy.
+Публичный вход: `http://localhost:8080`. Контракт: `docs/openapi.json` и HTTP `/openapi.json`. Приложение не публикует порты PostgreSQL, auth, domain и S3. `postgres-init`, `garage-init` и `model-download` должны завершиться с кодом 0; остальные контейнеры — быть healthy.
 
 **Локальные письма попадают в Mailpit на `http://localhost:8025`, а не во внешний почтовый ящик.** Локальное S3-хранилище — Garage с сохраняемым томом. Production использует реальный SMTP и внешний приватный S3 bucket; Mailpit/Garage в production-композиции выключены.
 
@@ -36,7 +36,7 @@ python3 scripts/test-profile.py
 git pull
 docker compose build --no-cache postgres-init garage
 docker compose rm -f postgres-init garage-init
-docker compose up -d --build --wait --wait-timeout 180
+docker compose up -d --build --wait --wait-timeout 600
 ```
 
 Пересборка нужна в том числе для `garage-init`: он использует образ `garage`. Ручное преобразование файлов не требуется. Тома с базой, ключами и фотографиями сохраняются; удалять их для исправления окончаний строк не требуется. Если лог сообщает другую ошибку, диагностируйте её по логу, а не по одному коду завершения.
@@ -45,7 +45,7 @@ docker compose up -d --build --wait --wait-timeout 180
 
 ### Браузерный интерфейс Angular
 
-Фронтенд находится в отдельном проекте `plot-twist-web`. После обновления backend выполните `docker compose up -d --build --wait --wait-timeout 180`, чтобы auth-service зарегистрировал браузерный клиент `plot-twist-browser`. В папке фронтенда: `npm ci` и `npm start`, затем откройте **http://localhost:4200**. Альтернатива без Node на хосте: `docker compose up -d --build --wait` из папки фронтенда; backend должен быть уже запущен и иметь сеть `plot-twist_edge`.
+Фронтенд находится в отдельном проекте `plot-twist-web`. После обновления backend выполните `docker compose up -d --build --wait --wait-timeout 600`, чтобы auth-service зарегистрировал браузерный клиент `plot-twist-browser`. В папке фронтенда: `npm ci` и `npm start`, затем откройте **http://localhost:4200**. Альтернатива без Node на хосте: `docker compose up -d --build --wait` из папки фронтенда; backend должен быть уже запущен и иметь сеть `plot-twist_edge`.
 
 Для браузера используется отдельный Authorization Code + PKCE клиент с callback `http://localhost:4200/auth/callback`, для CLI сохраняется прежний `plot-twist-web` и loopback callback. В локальном HTTP-режиме регистрируются два точных callback: для `localhost` и `127.0.0.1`, с теми же портом и путём. Параметр `AUTH_BROWSER_REDIRECT_URI` меняет браузерный callback; адрес завершения logout — тот же origin и `/signed-out`. В production нужен точный HTTPS callback, без автоматических алиасов. Frontend proxy отправляет API и auth-пути на gateway, поэтому CORS не требуется. Фронтенд может отдавать собственные стили `/default-ui.css` для формы auth-service.
 
@@ -149,3 +149,9 @@ python3 scripts/test-stories.py
 ```
 
 В ленте также доступны аватары авторов и вкладка «Понравившиеся». Свои комментарии редактируются с проверкой версии. Flyway V3 обновляет существующую схему без удаления данных; [подробности](docs/stories.md).
+
+## Смысловые рекомендации
+
+В Angular появилась вкладка **Для вас**. Локальная многоязычная E5/ONNX создаёт embeddings в фоне, Qdrant ищет похожие истории, PostgreSQL проверяет актуальность, оценки и права. Индексация использует транзакционную очередь с retry/lease, выдача — приватные снимки с курсорами. При недоступной модели включается явно обозначенный fallback. [Архитектура, ресурсы, загрузка модели и проверки](docs/recommendations.md).
+
+Первый полный запуск с загрузкой модели: `docker compose up -d --build --wait --wait-timeout 600`. Нужен доступ к Hugging Face; без реальных весов семантическая проверка не считается пройденной. Данные существующих сервисов сохраняются.

@@ -1,5 +1,6 @@
 package io.plottwist.domain.story.api;
 
+import io.plottwist.domain.config.AccountIdentity;
 import io.plottwist.domain.story.api.request.*;
 import io.plottwist.domain.story.application.StoryAuthorPhotos;
 import io.plottwist.domain.story.application.StoryService;

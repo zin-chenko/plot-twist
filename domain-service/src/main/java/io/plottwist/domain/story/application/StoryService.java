@@ -123,7 +123,12 @@ public class StoryService {
   }
 
   private static String text(String value, int max) {
-    if (value == null || value.isBlank() || value.length() > max || value.indexOf(0) >= 0)
+    if (value == null
+        || value.isBlank()
+        || value.length() > max
+        || value
+            .codePoints()
+            .anyMatch(ch -> Character.isISOControl(ch) && ch != '\n' && ch != '\r' && ch != '\t'))
       throw new StoryException(
           INVALID_INPUT, "Text is empty, too long or contains unsupported characters");
     return value.strip();

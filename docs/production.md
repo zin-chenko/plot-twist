@@ -78,3 +78,5 @@ JWT revocation is bounded by the access-token lifetime plus configured clock ske
 One host, one PostgreSQL instance and one TLS ingress remain single points of failure. Multi-host HA, a managed key rotation policy with overlapping JWKS, real provider validation, load/soak testing and an off-host restore drill are required before claiming their guarantees. The supplied code/config does not claim those operations have happened.
 
 Browser session/access lifetime is configured with `AUTH_SESSION_DURATION=4h` in `.env.production` (range `1m`–`12h`). Recreate auth-service and sign in again to apply it to a new token. See [session semantics and revocation limits](auth.md#продолжительность-браузерной-сессии).
+
+Semantic recommendations require a pinned local model revision, a private Qdrant secret, model-volume backup and derived-index recovery procedures. See [recommendation operations](recommendations.md). First model download needs explicit outbound network access; runtime inference and vector storage are private.

@@ -51,6 +51,18 @@ public class JdbcStoryRepository implements StoryRepository {
   }
 
   @Override
+  public List<Story> findMany(List<UUID> ids, UUID viewer) {
+    if (ids.isEmpty()) return List.of();
+    var args = new ArrayList<Object>();
+    args.add(viewer);
+    args.addAll(ids);
+    return jdbc.query(
+        SELECT + " WHERE s.id IN (" + String.join(",", Collections.nCopies(ids.size(), "?")) + ")",
+        this::story,
+        args.toArray());
+  }
+
+  @Override
   public Optional<Story> find(UUID id, UUID viewer) {
     return jdbc.query(SELECT + " WHERE s.id=?", this::story, viewer, id).stream().findFirst();
   }
