@@ -31,23 +31,31 @@ public class JdbcProfileRepository implements ProfileRepository {
   }
 
   @Override
-  public Optional<PublicProfile> findPublic(UUID account) {
+  public Optional<PublicProfile> findPublic(UUID account, UUID viewer) {
     return jdbc
         .query(
             """
-        SELECT a.id,COALESCE(p.display_name,'Читатель') AS display_name,p.bio,m.sha256
+        SELECT a.id,COALESCE(p.display_name,'Читатель') AS display_name,p.bio,m.sha256,
+          (SELECT count(*) FROM user_follows f WHERE f.following_id=a.id) AS followers_count,
+          (SELECT count(*) FROM user_follows f WHERE f.follower_id=a.id) AS following_count,
+          EXISTS(SELECT 1 FROM user_follows f WHERE f.follower_id=? AND f.following_id=a.id) AS following
         FROM (SELECT ?::uuid AS id) a
         LEFT JOIN user_profiles p ON p.account_id=a.id
         LEFT JOIN media_objects m ON m.id=p.photo_id AND m.state='ACTIVE'
         WHERE p.account_id IS NOT NULL OR EXISTS(
           SELECT 1 FROM stories s WHERE s.author_id=a.id AND s.published_version IS NOT NULL)
+          OR EXISTS(SELECT 1 FROM user_follows f WHERE f.follower_id=a.id OR f.following_id=a.id)
         """,
             (row, n) ->
                 new PublicProfile(
                     row.getObject("id", UUID.class),
                     row.getString("display_name"),
                     row.getString("bio"),
-                    row.getString("sha256")),
+                    row.getString("sha256"),
+                    row.getLong("followers_count"),
+                    row.getLong("following_count"),
+                    row.getBoolean("following")),
+            viewer,
             account)
         .stream()
         .findFirst();

@@ -8,6 +8,8 @@ public interface StoryRepository {
 
   List<Story> publishedByAuthor(UUID viewer, UUID author, PagePosition before, int limit);
 
+  List<Story> following(UUID viewer, PagePosition before, int limit);
+
   List<Story> findMany(List<UUID> ids, UUID viewer);
 
   Optional<Story> find(UUID id, UUID viewer);

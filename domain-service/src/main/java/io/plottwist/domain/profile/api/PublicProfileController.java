@@ -1,7 +1,9 @@
 package io.plottwist.domain.profile.api;
 
 import io.plottwist.domain.config.AccountIdentity;
+import io.plottwist.domain.profile.application.FollowService;
 import io.plottwist.domain.profile.application.ProfileService;
+import io.plottwist.domain.profile.model.FollowState;
 import io.plottwist.domain.profile.model.PublicProfile;
 import java.util.UUID;
 import org.springframework.http.*;
@@ -13,17 +15,34 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/profiles/{account}")
 public class PublicProfileController {
   private final ProfileService profiles;
+  private final FollowService follows;
 
-  public PublicProfileController(ProfileService profiles) {
+  public PublicProfileController(ProfileService profiles, FollowService follows) {
     this.profiles = profiles;
+    this.follows = follows;
   }
 
   @GetMapping
   ResponseEntity<PublicProfile> get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID account) {
-    AccountIdentity.require(jwt);
+    var viewer = AccountIdentity.require(jwt);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(profiles.publicProfile(account));
+        .body(profiles.publicProfile(account, viewer));
+  }
+
+  @PutMapping("/follow")
+  ResponseEntity<FollowState> follow(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID account) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(follows.setFollowing(AccountIdentity.require(jwt), account, true));
+  }
+
+  @DeleteMapping("/follow")
+  ResponseEntity<FollowState> unfollow(
+      @AuthenticationPrincipal Jwt jwt, @PathVariable UUID account) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(follows.setFollowing(AccountIdentity.require(jwt), account, false));
   }
 
   @GetMapping("/photo")

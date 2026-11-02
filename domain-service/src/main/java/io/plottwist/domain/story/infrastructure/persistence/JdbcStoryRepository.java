@@ -111,6 +111,24 @@ public class JdbcStoryRepository implements StoryRepository {
   }
 
   @Override
+  public List<Story> following(UUID viewer, PagePosition before, int limit) {
+    var args = new ArrayList<Object>(Collections.nCopies(7, null));
+    args.add(viewer);
+    args.add(viewer);
+    String sql =
+        SELECT
+            + " WHERE s.published_version IS NOT NULL AND EXISTS(SELECT 1 FROM user_follows f WHERE f.follower_id=? AND f.following_id=s.author_id)";
+    if (before != null) {
+      sql += " AND (s.created_at,s.id) < (?,?)";
+      args.add(OffsetDateTime.ofInstant(before.createdAt(), java.time.ZoneOffset.UTC));
+      args.add(before.id());
+    }
+    args.add(limit);
+    return jdbc.query(
+        sql + " ORDER BY s.created_at DESC,s.id DESC LIMIT ?", this::story, args.toArray());
+  }
+
+  @Override
   public void create(UUID id, UUID author, StoryContent content) {
     jdbc.queryForList(
         "SELECT pg_advisory_xact_lock(hashtextextended(?::text,0))", author.toString());

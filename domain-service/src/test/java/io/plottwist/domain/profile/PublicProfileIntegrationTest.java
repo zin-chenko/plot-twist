@@ -11,10 +11,12 @@ import io.plottwist.domain.media.application.port.ObjectStorage;
 import io.plottwist.domain.media.model.ImageDigest;
 import io.plottwist.domain.moderation.infrastructure.messaging.OutboxPublisher;
 import io.plottwist.domain.moderation.infrastructure.persistence.DecisionStore;
+import io.plottwist.domain.profile.application.FollowService;
 import io.plottwist.moderation.contract.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.*;
+import java.util.concurrent.*;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -39,6 +41,7 @@ class PublicProfileIntegrationTest {
   @Autowired ObjectMapper json;
   @Autowired JdbcTemplate jdbc;
   @Autowired DecisionStore decisions;
+  @Autowired FollowService follows;
   @MockitoBean OutboxPublisher publisher;
   @MockitoBean ObjectStorage storage;
   UUID author = UUID.randomUUID(), reader = UUID.randomUUID(), other = UUID.randomUUID();
@@ -107,6 +110,14 @@ class PublicProfileIntegrationTest {
 
   @AfterEach
   void cleanup() {
+    jdbc.update(
+        "DELETE FROM user_follows WHERE follower_id IN (?,?,?) OR following_id IN (?,?,?)",
+        author,
+        reader,
+        other,
+        author,
+        reader,
+        other);
     jdbc.update("DELETE FROM stories WHERE author_id IN (?,?,?)", author, reader, other);
     jdbc.update("DELETE FROM user_profiles WHERE account_id IN (?,?,?)", author, reader, other);
     jdbc.update("DELETE FROM media_objects WHERE owner_id IN (?,?,?)", author, reader, other);
@@ -116,7 +127,7 @@ class PublicProfileIntegrationTest {
   void onlyPublicFieldsAndSanitizedPhotoAreVisibleToOtherUsers() throws Exception {
     profile();
     var view = getJson("/api/v1/profiles/" + author, reader);
-    assertEquals(4, view.size());
+    assertEquals(7, view.size());
     assertEquals(author.toString(), view.get("accountId").asText());
     assertEquals("Автор", view.get("displayName").asText());
     assertTrue(view.get("bio").asText().contains("Открытое описание"));
@@ -244,5 +255,206 @@ class PublicProfileIntegrationTest {
                           .authorities(new SimpleGrantedAuthority("SCOPE_api.write"))))
           .andExpect(status().isForbidden());
     }
+  }
+
+  private JsonNode follow(UUID actor, UUID target, boolean subscribed) throws Exception {
+    String route = "/api/v1/profiles/" + target + "/follow";
+    return json.readTree(
+        mvc.perform((subscribed ? put(route) : delete(route)).with(user(actor)))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andReturn()
+            .getResponse()
+            .getContentAsByteArray());
+  }
+
+  @Test
+  void subscriptionsAreIdempotentIndependentAndSurviveDeletingProfileDetails() throws Exception {
+    profile();
+    for (int i = 0; i < 3; i++) {
+      var state = follow(reader, author, true);
+      assertTrue(state.get("following").asBoolean());
+      assertEquals(1, state.get("followersCount").asLong());
+    }
+    var own = getJson("/api/v1/profiles/" + reader, reader);
+    assertEquals("Читатель", own.get("displayName").asText());
+    assertEquals(1, own.get("followingCount").asLong());
+    assertTrue(getJson("/api/v1/profiles/" + author, reader).get("following").asBoolean());
+    assertFalse(getJson("/api/v1/profiles/" + author, other).get("following").asBoolean());
+    follow(other, author, true);
+    assertEquals(2, getJson("/api/v1/profiles/" + author, reader).get("followersCount").asLong());
+    follow(author, reader, true); // mutual subscriptions are valid.
+    assertEquals(1, getJson("/api/v1/profiles/" + author, author).get("followingCount").asLong());
+    mvc.perform(delete("/api/v1/profile").with(user(author)).header("If-Match", "\"0\""))
+        .andExpect(status().isNoContent());
+    var fallback = getJson("/api/v1/profiles/" + author, reader);
+    assertEquals("Читатель", fallback.get("displayName").asText());
+    assertTrue(fallback.get("bio").isNull());
+    assertEquals(2, fallback.get("followersCount").asLong());
+    assertTrue(fallback.get("following").asBoolean());
+    for (int i = 0; i < 3; i++) {
+      var state = follow(reader, author, false);
+      assertFalse(state.get("following").asBoolean());
+      assertEquals(1, state.get("followersCount").asLong());
+    }
+    assertTrue(getJson("/api/v1/profiles/" + author, other).get("following").asBoolean());
+    assertEquals(0, getJson("/api/v1/profiles/" + reader, reader).get("followingCount").asLong());
+  }
+
+  @Test
+  void concurrentDuplicateAndOpposingRequestsNeverDuplicateOrCorruptTheEdge() throws Exception {
+    profile();
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var subscriptions = new ArrayList<Callable<Boolean>>();
+      for (int i = 0; i < 12; i++)
+        subscriptions.add(() -> follows.setFollowing(reader, author, true).following());
+      for (var result : executor.invokeAll(subscriptions)) assertTrue(result.get());
+      assertEquals(
+          1,
+          jdbc.queryForObject(
+              "SELECT count(*) FROM user_follows WHERE follower_id=? AND following_id=?",
+              Long.class,
+              reader,
+              author));
+      var changes = new ArrayList<Callable<Boolean>>();
+      for (int i = 0; i < 16; i++) {
+        boolean desired = i % 2 == 0;
+        changes.add(
+            () -> {
+              var state = follows.setFollowing(reader, author, desired);
+              return state.following() == desired && state.followersCount() == (desired ? 1 : 0);
+            });
+      }
+      for (var result : executor.invokeAll(changes)) assertTrue(result.get());
+      assertFalse(follows.setFollowing(reader, author, false).following());
+      assertEquals(
+          0,
+          jdbc.queryForObject(
+              "SELECT count(*) FROM user_follows WHERE follower_id=? AND following_id=?",
+              Long.class,
+              reader,
+              author));
+    }
+  }
+
+  @Test
+  void selfUnknownTargetsAndUntrustedActorsCannotCreateSubscriptions() throws Exception {
+    profile();
+    String path = "/api/v1/profiles/" + author + "/follow";
+    mvc.perform(put(path).with(user(author))).andExpect(status().isBadRequest());
+    mvc.perform(delete(path).with(user(author))).andExpect(status().isBadRequest());
+    mvc.perform(put("/api/v1/profiles/" + UUID.randomUUID() + "/follow").with(user(reader)))
+        .andExpect(status().isNotFound());
+    for (var method : List.of("PUT", "DELETE")) {
+      mvc.perform(request(org.springframework.http.HttpMethod.valueOf(method), path))
+          .andExpect(status().isUnauthorized());
+      mvc.perform(
+              request(org.springframework.http.HttpMethod.valueOf(method), path)
+                  .with(user(reader).authorities(new SimpleGrantedAuthority("SCOPE_api.read"))))
+          .andExpect(status().isForbidden());
+      mvc.perform(
+              request(org.springframework.http.HttpMethod.valueOf(method), path)
+                  .with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_api.write"))))
+          .andExpect(status().isForbidden());
+      mvc.perform(
+              request(org.springframework.http.HttpMethod.valueOf(method), path)
+                  .with(
+                      jwt()
+                          .jwt(
+                              j ->
+                                  j.subject(reader.toString())
+                                      .claim("account_id", other.toString()))
+                          .authorities(new SimpleGrantedAuthority("SCOPE_api.write"))))
+          .andExpect(status().isForbidden());
+    }
+    mvc.perform(
+            put(path)
+                .with(user(reader))
+                .contentType("application/json")
+                .content("{\"followerId\":\"" + other + "\"}"))
+        .andExpect(status().isOk());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM user_follows WHERE follower_id=? AND following_id=?",
+            Long.class,
+            reader,
+            author));
+    assertEquals(
+        0,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM user_follows WHERE follower_id=?", Long.class, other));
+    assertThrows(
+        org.springframework.dao.DataIntegrityViolationException.class,
+        () ->
+            jdbc.update(
+                "INSERT INTO user_follows(follower_id,following_id) VALUES(?,?)", reader, reader));
+  }
+
+  @Test
+  void subscriptionFeedUsesApprovedSnapshotsAndCurrentEdgesWithKeysetPagination() throws Exception {
+    profile();
+    var published = new HashSet<UUID>();
+    for (int i = 0; i < 3; i++) published.add(story(author, "Subscribed story " + i, true));
+    UUID edited = published.iterator().next();
+    story(author, "PRIVATE_UNPUBLISHED", false);
+    story(other, "NOT_FOLLOWED", true);
+    story(reader, "OWN_POST", true);
+    mvc.perform(
+            put("/api/v1/stories/" + edited)
+                .with(user(author))
+                .header("If-Match", "\"0\"")
+                .contentType("application/json")
+                .content("{\"title\":\"PRIVATE_EDIT\",\"body\":\"PRIVATE_DRAFT\"}"))
+        .andExpect(status().isAccepted());
+    assertTrue(getJson("/api/v1/stories/following", reader).get("items").isEmpty());
+    follow(reader, author, true);
+    jdbc.update(
+        "INSERT INTO story_reactions(story_id,account_id,value) VALUES(?,?,1)", edited, reader);
+    var seen = new HashSet<UUID>();
+    String cursor = null;
+    do {
+      var request = get("/api/v1/stories/following").with(user(reader)).param("limit", "1");
+      if (cursor != null) request.param("cursor", cursor);
+      var page =
+          json.readTree(
+              mvc.perform(request)
+                  .andExpect(status().isOk())
+                  .andReturn()
+                  .getResponse()
+                  .getContentAsByteArray());
+      assertEquals(1, page.get("items").size());
+      assertFalse(page.toString().contains("PRIVATE_"));
+      assertFalse(page.toString().contains("NOT_FOLLOWED"));
+      assertFalse(page.toString().contains("OWN_POST"));
+      var item = page.get("items").get(0);
+      assertEquals("PUBLISHED", item.get("moderationStatus").asText());
+      assertEquals(0, item.get("version").asLong());
+      if (item.get("id").asText().equals(edited.toString()))
+        assertEquals(1, item.get("myReaction").asInt());
+      assertTrue(seen.add(UUID.fromString(item.get("id").asText())));
+      cursor = page.get("nextCursor").isNull() ? null : page.get("nextCursor").asText();
+    } while (cursor != null);
+    assertEquals(published, seen);
+    assertTrue(
+        getJson("/api/v1/stories/following?accountId=" + reader, other).get("items").isEmpty());
+    mvc.perform(get("/api/v1/stories/following").with(user(reader)).param("limit", "21"))
+        .andExpect(status().isBadRequest());
+    mvc.perform(get("/api/v1/stories/following").with(user(reader)).param("cursor", "bad"))
+        .andExpect(status().isBadRequest());
+    mvc.perform(get("/api/v1/stories/following")).andExpect(status().isUnauthorized());
+    mvc.perform(
+            get("/api/v1/stories/following")
+                .with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_api.read"))))
+        .andExpect(status().isForbidden());
+    follow(reader, author, false);
+    assertTrue(getJson("/api/v1/stories/following", reader).get("items").isEmpty());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM story_reactions WHERE story_id=? AND account_id=?",
+            Long.class,
+            edited,
+            reader));
   }
 }

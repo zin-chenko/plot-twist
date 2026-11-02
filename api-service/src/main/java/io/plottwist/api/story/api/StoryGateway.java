@@ -18,7 +18,14 @@ public class StoryGateway {
     this.backend = backend;
   }
 
-  @GetMapping({"", "/{id}", "/{id}/comments", "/{id}/comments/{commentId}", "/{id}/author/photo"})
+  @GetMapping({
+    "",
+    "/following",
+    "/{id}",
+    "/{id}/comments",
+    "/{id}/comments/{commentId}",
+    "/{id}/author/photo"
+  })
   ResponseEntity<byte[]> get(@AuthenticationPrincipal Jwt jwt, HttpServletRequest request) {
     return relay(jwt, request, null);
   }

@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import io.plottwist.api.config.SecurityConfig;
 import io.plottwist.api.profile.api.PublicProfileGateway;
 import io.plottwist.api.shared.application.port.DomainBackend;
+import io.plottwist.api.story.api.StoryGateway;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +20,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@WebMvcTest(PublicProfileGateway.class)
+@WebMvcTest({PublicProfileGateway.class, StoryGateway.class})
 @Import(SecurityConfig.class)
 class PublicProfileGatewayTest {
   @Autowired MockMvc mvc;
@@ -100,5 +101,44 @@ class PublicProfileGatewayTest {
         .andExpect(status().isForbidden());
     mvc.perform(get("/api/v1/profiles/not-a-uuid").with(user())).andExpect(status().isBadRequest());
     verifyNoInteractions(domain);
+  }
+
+  @Test
+  void followingRequiresWriteScopeAndRelaysOnlyTheVerifiedViewerToken() throws Exception {
+    String route = "/api/v1/profiles/" + author + "/follow";
+    for (var method : List.of(HttpMethod.PUT, HttpMethod.DELETE)) {
+      mvc.perform(request(method, route)).andExpect(status().isUnauthorized());
+      mvc.perform(request(method, route).with(user())).andExpect(status().isForbidden());
+      mvc.perform(
+              request(method, route)
+                  .with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_api.write"))))
+          .andExpect(status().isForbidden());
+    }
+    verifyNoInteractions(domain);
+    for (var method : List.of(HttpMethod.PUT, HttpMethod.DELETE)) {
+      when(domain.exchange(method, route, "token", Map.of(), null, null))
+          .thenReturn(
+              ResponseEntity.ok()
+                  .cacheControl(CacheControl.noStore())
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .body(
+                      "{\"following\":true,\"followersCount\":1,\"followingCount\":0}".getBytes()));
+      mvc.perform(
+              request(method, route)
+                  .with(user().authorities(new SimpleGrantedAuthority("SCOPE_api.write"))))
+          .andExpect(status().isOk())
+          .andExpect(header().string("Cache-Control", "no-store"));
+      verify(domain).exchange(method, route, "token", Map.of(), null, null);
+    }
+  }
+
+  @Test
+  void subscriptionFeedHasAStaticRouteAndPreservesItsCursor() throws Exception {
+    String path = "/api/v1/stories/following?limit=2&cursor=opaque-next-page";
+    when(domain.exchange(HttpMethod.GET, path, "token", Map.of(), null, null))
+        .thenReturn(ResponseEntity.ok().cacheControl(CacheControl.noStore()).body("{}".getBytes()));
+    mvc.perform(get(path).with(user())).andExpect(status().isOk());
+    verify(domain).exchange(HttpMethod.GET, path, "token", Map.of(), null, null);
+    mvc.perform(get("/api/v1/stories/following")).andExpect(status().isUnauthorized());
   }
 }

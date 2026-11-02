@@ -42,6 +42,16 @@ public class StoryController {
     return response(stories.get(id, AccountIdentity.require(jwt)));
   }
 
+  @GetMapping("/following")
+  ResponseEntity<FeedPage<Story>> following(
+      @AuthenticationPrincipal Jwt jwt,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(defaultValue = "10") int limit) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(stories.following(AccountIdentity.require(jwt), cursor, limit));
+  }
+
   @GetMapping("/{id}/author/photo")
   ResponseEntity<byte[]> authorPhoto(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
     stories.get(id, AccountIdentity.require(jwt));

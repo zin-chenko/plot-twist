@@ -55,6 +55,30 @@ public class PublicProfileGateway {
         null);
   }
 
+  @PutMapping("/follow")
+  ResponseEntity<byte[]> follow(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID account) {
+    requireUser(jwt);
+    return domain.exchange(
+        HttpMethod.PUT,
+        "/api/v1/profiles/" + account + "/follow",
+        jwt.getTokenValue(),
+        Map.of(),
+        null,
+        null);
+  }
+
+  @DeleteMapping("/follow")
+  ResponseEntity<byte[]> unfollow(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID account) {
+    requireUser(jwt);
+    return domain.exchange(
+        HttpMethod.DELETE,
+        "/api/v1/profiles/" + account + "/follow",
+        jwt.getTokenValue(),
+        Map.of(),
+        null,
+        null);
+  }
+
   private static void requireUser(Jwt jwt) {
     try {
       String id = jwt.getClaimAsString("account_id");

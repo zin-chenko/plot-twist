@@ -9,7 +9,7 @@ import java.util.UUID;
 public interface ProfileRepository {
   Optional<Profile> find(UUID owner);
 
-  Optional<PublicProfile> findPublic(UUID account);
+  Optional<PublicProfile> findPublic(UUID account, UUID viewer);
 
   boolean create(UUID owner, ProfileDetails details);
 

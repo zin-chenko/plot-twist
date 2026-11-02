@@ -41,8 +41,12 @@ public class ProfileService {
   }
 
   public PublicProfile publicProfile(UUID account) {
+    return publicProfile(account, null);
+  }
+
+  public PublicProfile publicProfile(UUID account, UUID viewer) {
     return profiles
-        .findPublic(account)
+        .findPublic(account, viewer)
         .orElseThrow(() -> new ProfileException(NOT_FOUND, "Profile not found"));
   }
 
