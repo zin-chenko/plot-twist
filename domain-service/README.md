@@ -1,4 +1,4 @@
-# Profile, stories and media service
+# Profiles, stories, media and private chats
 
 Владеет личными профилями, версиями записей, метаданными фото и жизненным циклом приватных объектов. База: PostgreSQL `profiles`; байты фото — приватное S3-совместимое хранилище.
 
@@ -11,6 +11,7 @@ io.plottwist.domain
 │   ├── model
 │   └── infrastructure/persistence
 ├── story/{api,application/port,model,infrastructure/persistence}
+├── chat/{api,application/port,model,infrastructure/persistence}
 ├── media
 │   ├── application/port
 │   ├── model
@@ -33,3 +34,5 @@ io.plottwist.domain
 `StoryService` и `JdbcStoryRepository` реализуют ленту с курсорами, авторство, версионирование, уникальные оценки и комментарии в той же БД. Миграция V2 дополняет V1; данные профилей сохраняются. Проверка: `python3 scripts/test-stories.py`. [Подробности](../docs/stories.md).
 
 `StoryAuthorPhotos` читает только активный JPEG автора существующей истории через общий порт ObjectStorage. Личные поля профиля остаются доступны только владельцу. Комментарии редактируются по собственной версии, `liked=true` выбирает текущие лайки JWT-пользователя. Схема дополняется миграцией V3.
+
+Пакет `chat` отвечает за приватную переписку один на один: участники, последовательности сообщений, идемпотентность, курсорная история и read markers. Данные — в PostgreSQL, Flyway V11; публичная модерация/рекомендации не получают тексты. [Контракт и проверки](../docs/chats.md).

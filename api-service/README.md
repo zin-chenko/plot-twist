@@ -22,3 +22,5 @@ io.plottwist.api
 [Общие правила структуры](../docs/backend-structure.md) · [Сквозная архитектура](../docs/architecture.md)
 
 `StoryGateway` передаёт проверенный пользовательский JWT, условия версий и параметры курсора; авторство, оценки и комментарии принадлежат domain-service. [Истории API](../docs/stories.md).
+
+`chat.api.ChatGateway` передаёт `/api/v1/chats/**` в domain-service с пользовательским JWT. GET требует api.read, POST/PUT — api.write; machine grant не подходит. [Контракт](../docs/chats.md).

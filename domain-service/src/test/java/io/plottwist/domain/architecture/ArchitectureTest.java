@@ -41,6 +41,7 @@ class ArchitectureTest {
           .resideInAnyPackage(
               "io.plottwist.domain.account.api..",
               "io.plottwist.domain.profile.api..",
+              "io.plottwist.domain.chat.api..",
               "io.plottwist.domain.attachment.api..",
               "io.plottwist.domain.story.api..",
               "io.plottwist.domain.recommendation.api..",
@@ -57,6 +58,7 @@ class ArchitectureTest {
           .resideInAnyPackage(
               "io.plottwist.domain.account.api..",
               "io.plottwist.domain.profile.api..",
+              "io.plottwist.domain.chat.api..",
               "io.plottwist.domain.attachment.api..",
               "io.plottwist.domain.story.api..",
               "io.plottwist.domain.recommendation.api..")
@@ -78,6 +80,7 @@ class ArchitectureTest {
           .resideInAnyPackage(
               "io.plottwist.domain.account.api..",
               "io.plottwist.domain.profile.api..",
+              "io.plottwist.domain.chat.api..",
               "io.plottwist.domain.attachment.api..",
               "io.plottwist.domain.story.api..",
               "io.plottwist.domain.recommendation.api..");

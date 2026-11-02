@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.9.0",
-    "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT."
+    "version": "1.10.0",
+    "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT. Private one-to-one chats are restricted to their two verified participants."
   },
   "servers": [
     {
@@ -2607,6 +2607,457 @@
         },
         "description": "Verified users with api.read can read public connection lists. Rows expose only nickname, avatar hash, account ID and the requesting viewer’s following state. Newest relationships first, using (created_at, member account ID), with opaque cursor bound to this profile and list direction. Reading one’s own empty list succeeds even without filled profile details. Pagination reads live edges; refresh for new relationships above the current cursor. Search is applied in PostgreSQL before LIMIT. Cursors are bound to the normalized search term as well as the profile/list direction; change q only when starting a fresh page. Legacy cursors remain accepted for an empty search."
       }
+    },
+    "/api/v1/chats": {
+      "post": {
+        "operationId": "openDirectChat",
+        "summary": "Open the unique chat for this user pair",
+        "description": "Recipient must have a public profile for a new pair. Self-chat is rejected. Reopening an existing chat also works after profile removal. Creation sends no message; the empty chat is visible only to the user who opened it, until the recipient explicitly opens it or a message is sent.",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSummary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON, invalid UUID/text/page size/sequence/cursor"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope or verified account_id equal to sub"
+          },
+          "404": {
+            "description": "Chat is absent or viewer is not a participant; recipient has no public profile when opening a new pair"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenChat"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listDirectChats",
+        "summary": "List your private conversations, newest activity first",
+        "description": "Live keyset pagination by (updatedAt,id), cursor bound to the requesting viewer. Empty unopened chats are hidden from the other participant. Unread count includes incoming messages after readThrough only. A preview contains at most 160 Unicode characters; private names/email are never included. Refresh for activity newer than the cursor.",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatPage"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON, invalid UUID/text/page size/sequence/cursor"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope or verified account_id equal to sub"
+          },
+          "404": {
+            "description": "Chat is absent or viewer is not a participant; recipient has no public profile when opening a new pair"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 30
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/chats/{id}": {
+      "get": {
+        "operationId": "getDirectChat",
+        "summary": "Get participant-only chat metadata",
+        "description": "",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSummary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON, invalid UUID/text/page size/sequence/cursor"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope or verified account_id equal to sub"
+          },
+          "404": {
+            "description": "Chat is absent or viewer is not a participant; recipient has no public profile when opening a new pair"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/api/v1/chats/{id}/messages": {
+      "get": {
+        "operationId": "listDirectMessages",
+        "summary": "Read ordered messages in a participant-only chat",
+        "description": "Before and after are mutually exclusive. Without after, returns the latest page before the optional exclusive sequence; nextBefore requests older history. With after, returns the next ascending page after that exclusive sequence, hasMoreNewer signals backlog. All response items are ascending. Metadata and rows use one repeatable-read snapshot. after must not exceed lastSequence. GET does not mark messages read.",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessagePage"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON, invalid UUID/text/page size/sequence/cursor"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope or verified account_id equal to sub"
+          },
+          "404": {
+            "description": "Chat is absent or viewer is not a participant; recipient has no public profile when opening a new pair"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "sendDirectMessage",
+        "summary": "Send a plain text message exactly once per client key",
+        "description": "Sender comes exclusively from verified JWT. Per-chat row locking assigns a contiguous sequence; writes and inbox update commit atomically. Unique (chat,sender,clientMessageId) ensures retries with identical normalized text return the original row. Do not generate a new key after a network failure.",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Idempotent replay: the original message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON, invalid UUID/text/page size/sequence/cursor"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope or verified account_id equal to sub"
+          },
+          "404": {
+            "description": "Chat is absent or viewer is not a participant; recipient has no public profile when opening a new pair"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          },
+          "201": {
+            "description": "Message created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "409": {
+            "description": "clientMessageId already used by this sender in this chat with different normalized text"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendChatMessage"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{id}/read": {
+      "put": {
+        "operationId": "markDirectChatRead",
+        "summary": "Advance your read position monotonically",
+        "description": "throughSequence must be between zero and current lastSequence. Older positions never move the marker back. Only the requesting participant’s marker is updated. It is visible to the other participant as peerReadThrough.",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSummary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON, invalid UUID/text/page size/sequence/cursor"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope or verified account_id equal to sub"
+          },
+          "404": {
+            "description": "Chat is absent or viewer is not a participant; recipient has no public profile when opening a new pair"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadChat"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3430,6 +3881,263 @@
               "null"
             ],
             "maxLength": 240
+          }
+        }
+      },
+      "ChatPeer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accountId",
+          "displayName",
+          "photoSha256"
+        ],
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "photoSha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "ChatMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "senderId",
+          "clientMessageId",
+          "body",
+          "createdAt"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "senderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "clientMessageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "description": "Plain text. CRLF is normalized to LF, surrounding whitespace removed, NUL forbidden. Limit is measured in Java/JavaScript UTF-16 units."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MessagePreview": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "senderId",
+          "body",
+          "createdAt"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "senderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ChatSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "peer",
+          "updatedAt",
+          "lastSequence",
+          "readThrough",
+          "peerReadThrough",
+          "unreadCount",
+          "lastMessage"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "peer": {
+            "$ref": "#/components/schemas/ChatPeer"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "readThrough": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "peerReadThrough": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "unreadCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "lastMessage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessagePreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ChatPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 240
+          }
+        }
+      },
+      "ChatMessagePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "nextBefore",
+          "hasMoreNewer",
+          "lastSequence",
+          "peerReadThrough"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            }
+          },
+          "nextBefore": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 1
+          },
+          "hasMoreNewer": {
+            "type": "boolean"
+          },
+          "lastSequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "peerReadThrough": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "OpenChat": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "recipientId"
+        ],
+        "properties": {
+          "recipientId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "SendChatMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "clientMessageId",
+          "body"
+        ],
+        "properties": {
+          "clientMessageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "description": "Nonblank plain text, no NUL. Reuse this UUID and exactly the same text when retrying."
+          }
+        }
+      },
+      "ReadChat": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "throughSequence"
+        ],
+        "properties": {
+          "throughSequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       }

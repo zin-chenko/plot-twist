@@ -56,8 +56,8 @@ flowchart LR
 | Сервис | Функции | Внешние адаптеры |
 |---|---|---|
 | `auth-service` | `account`, `notification`, `oauth`, технический `security` | `JdbcAccountRepository`, `JdbcEmailOutbox`, SMTP worker, JDBC OAuth, ключи подписи |
-| `domain-service` | `profile`, `media`, `story` | `JdbcStoryRepository`, `JdbcProfileRepository`, `JdbcMediaRepository`, `S3ObjectStorage`, `ImageSanitizer`, media cleanup |
-| `api-service` | `profile`, `story`, `diagnostics` | `DomainHttpClient` и диагностический HTTP-клиент |
+| `domain-service` | `profile`, `media`, `story`, `chat` | `JdbcChatRepository`, `JdbcStoryRepository`, `JdbcProfileRepository`, `JdbcMediaRepository`, `S3ObjectStorage`, `ImageSanitizer`, media cleanup |
+| `api-service` | `profile`, `story`, `chat`, `diagnostics` | `DomainHttpClient` и диагностический HTTP-клиент |
 
 `AccountService` больше не содержит SQL: он работает через `AccountRepository` и `EmailOutbox`. Вставка аккаунта, кода и outbox-сообщения остаётся одной транзакцией. SMTP выполняется фоновым адаптером.
 
@@ -108,3 +108,5 @@ python3 scripts/test-profile.py
 
 
 `moderation-service` — отдельный stateless обработчик RabbitMQ с пакетами policy/processing/config. `moderation-contract` — библиотека Java records без Spring, общей БД или бизнес-логики: versioned wire messages и хеш текста. Domain владеет outbox, снимком публикации и применением решений; сервис модерации не имеет прямого доступа к его таблицам.
+
+`chat` — отдельная функция domain-service с участниками, последовательностью сообщений, идемпотентностью и read markers. Сценарии зависят от repository port; JDBC реализует блокировки/SQL. Для нового диалога используется публичный профиль получателя; профиль не зависит от чатов. Тексты не поступают в story/moderation/recommendation. API-сервис содержит только `chat.api.ChatGateway`, использующий общий `DomainBackend`. [Доступ, хранение и масштабирование](chats.md).

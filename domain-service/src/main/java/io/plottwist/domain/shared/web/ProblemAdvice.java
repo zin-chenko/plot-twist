@@ -27,6 +27,17 @@ public class ProblemAdvice {
         error.getMessage());
   }
 
+  @ExceptionHandler(io.plottwist.domain.chat.application.ChatException.class)
+  ResponseEntity<ProblemDetail> chat(io.plottwist.domain.chat.application.ChatException error) {
+    return problem(
+        switch (error.reason()) {
+          case NOT_FOUND -> HttpStatus.NOT_FOUND;
+          case INVALID -> HttpStatus.BAD_REQUEST;
+          case CONFLICT -> HttpStatus.CONFLICT;
+        },
+        error.getMessage());
+  }
+
   @ExceptionHandler(ProfileException.class)
   ResponseEntity<ProblemDetail> profile(ProfileException error) {
     HttpStatus status =
