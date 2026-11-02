@@ -22,7 +22,9 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 256m
+    # Installation now includes the same real ONNX warmup as inference.
+    mem_limit: 1536m
+    cpus: 2
     restart: "no"
   embeddings:
     logging: *log-config

@@ -8,7 +8,7 @@
 docker compose up -d --build --wait --wait-timeout 600
 ```
 
-Первый запуск скачивает несколько сотен МБ модели. `model-download` разрешает выбранный revision в полный commit SHA, скачивает ONNX/tokenizer из этого commit, считает SHA-256 и атомарно создаёт `embedding-model/manifest.json`. Повторный запуск проверяет кеш и не обновляет модель автоматически. Источники: https://huggingface.co/Xenova/multilingual-e5-small и https://huggingface.co/intfloat/multilingual-e5-small .
+Первый запуск скачивает несколько сотен МБ модели. `model-download` разрешает выбранный revision в полный commit SHA, скачивает ONNX/tokenizer из этого commit, проверяет размер и upstream SHA-256 весов (Git blob SHA-1 для обычного файла tokenizer), выполняет пробный расчёт через настоящий Encoder и атомарно создаёт `embedding-model/manifest.json`. Повторный запуск проверяет кеш и warmup, не обновляя модель автоматически. Старый кеш проходит одноразовую проверку по метаданным исходного commit (`blobs=true`); повреждённые файлы перескачиваются автоматически. Самостоятельно вычисленный после скачивания хеш не заменяет сравнение с upstream: обрезанный ONNX может совпадать со своим старым manifest. Источники: https://huggingface.co/Xenova/multilingual-e5-small и https://huggingface.co/intfloat/multilingual-e5-small .
 
 Загрузчик выводит выбранный commit, имя/размер файла и прогресс каждые 10 секунд передачи данных. Таймаут ожидания сетевых данных — 30 секунд, общий бюджет установки — 30 минут; временные ошибки повторяются до трёх раз, HTTP 400/401/403/404 завершают установку сразу. Неполный файл не активируется. У одноразового `model-download` отключена унаследованная проверка HTTP-сервера: успешное состояние — `Exited (0)`, а `embeddings` запускается только после этого. При медленной загрузке команда `--wait-timeout 600` может закончить ожидание раньше процесса; прогресс виден через `docker compose logs -f model-download`.
 
@@ -16,6 +16,7 @@ docker compose up -d --build --wait --wait-timeout 600
 
 ```sh
 git pull
+docker compose stop embeddings
 docker compose up --build --no-deps --force-recreate --exit-code-from model-download model-download
 ```
 
@@ -69,7 +70,7 @@ GET `/api/v1/recommendations` возвращает `items`, `nextCursor`, `mode`
 
 ## Эксплуатация
 
-Qdrant и inference доступны только по внутренней Docker-сети `vectors`, без опубликованных портов. Одноразовый скачиватель модели имеет отдельную сеть для загрузки, без доступа к БД. Модель и Qdrant имеют persistent volumes; обычный `down` их сохраняет. CPU/RAM лимиты: inference 2 CPU/1536 MB, Qdrant 2 CPU/512 MB. Реальная пропускная способность требует измерений на целевом железе.
+Qdrant и inference доступны только по внутренней Docker-сети `vectors`, без опубликованных портов. Одноразовый скачиватель модели имеет отдельную сеть для загрузки, без доступа к БД. Модель и Qdrant имеют persistent volumes; обычный `down` их сохраняет. CPU/RAM лимиты: inference и одноразовый установщик с проверкой модели — по 2 CPU/1536 MB (стартуют последовательно), Qdrant — 2 CPU/512 MB. Реальная пропускная способность требует измерений на целевом железе.
 
 Production требует `EMBEDDING_MODEL_REVISION` с полным проверенным commit SHA; `main` запрещён. Значение видно в `manifest.json` после локальной установки. Создайте отдельный модельный volume для смены revision. Новый `provision-secrets.py` создаёт `secrets/qdrant-api-key`; для существующего каталога добавьте этот файл через менеджер секретов. На Linux файл должен читаться domain UID 999 и Qdrant GID 0, например owner `999:0`, mode `0440`. Dev key удаляется production override. Секрет не передаётся через публичный API.
 

@@ -32,8 +32,9 @@ def normalize(vector):
 
 
 class Encoder:
-    def __init__(self, directory):
-        self.manifest = validate(directory)
+    def __init__(self, directory, manifest=None):
+        # The installer supplies its verified candidate before publishing manifest.json.
+        self.manifest = validate(directory) if manifest is None else manifest
         self.tokenizer = Tokenizer.from_file(str(directory / "tokenizer.json"))
         self.tokenizer.no_truncation()
         self.tokenizer.no_padding()

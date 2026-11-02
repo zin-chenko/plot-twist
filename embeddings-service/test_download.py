@@ -86,6 +86,28 @@ class DownloadTest(unittest.TestCase):
             self.assertIn("HTTP 403", log.getvalue())
             self.assertEqual(list(Path(directory).glob("*.part")), [])
 
+    def test_same_length_wrong_content_is_rejected_before_replacing_cached_file(self):
+        def respond(request):
+            request.send_response(200)
+            request.send_header("Content-Length", "3")
+            request.end_headers()
+            request.wfile.write(b"bad")
+
+        with server(
+            respond
+        ) as url, tempfile.TemporaryDirectory() as directory, redirect_stdout(
+            io.StringIO()
+        ), patch(
+            "download_model.DOWNLOAD_ATTEMPTS", 1
+        ):
+            target = Path(directory) / "fixture.bin"
+            target.write_bytes(b"existing")
+            expected = {"size": 3, "sha256": hashlib.sha256(b"yes").hexdigest()}
+            with self.assertRaisesRegex(OSError, "upstream checksum"):
+                download_file(url, target, time.monotonic() + 10, expected=expected)
+            self.assertEqual(target.read_bytes(), b"existing")
+            self.assertEqual(list(Path(directory).glob("*.part")), [])
+
     def test_elapsed_deadline_prevents_any_network_request(self):
         with tempfile.TemporaryDirectory() as directory, patch(
             "download_model.urlopen"

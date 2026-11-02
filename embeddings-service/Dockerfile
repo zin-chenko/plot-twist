@@ -8,7 +8,7 @@ RUN --mount=type=secret,id=pip_config,target=/run/secrets/pip_config \
     if [ -f /run/secrets/pip_config ]; then export PIP_CONFIG_FILE=/run/secrets/pip_config; fi; \
     if [ -f /run/secrets/ca_certs ]; then export PIP_CERT=/run/secrets/ca_certs; fi; \
     pip install --no-cache-dir --only-binary=:all: --require-hashes -r requirements.lock
-COPY app.py download_model.py ./
+COPY --chmod=0644 app.py download_model.py ./
 USER 10001:10001
 EXPOSE 8090
 HEALTHCHECK --interval=10s --timeout=3s --start-period=120s --retries=12 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=2)"]

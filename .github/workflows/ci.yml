@@ -21,6 +21,8 @@ jobs:
           /tmp/spec/bin/python -c 'import json; from openapi_spec_validator import validate_spec; validate_spec(json.load(open("docs/openapi.json")))'
       - name: Build images and execute Java security/unit tests
         run: docker compose build
+      - name: Reject invalid ONNX artifacts with real runtime
+        run: docker compose run --rm --no-deps --entrypoint python -T embeddings - < embeddings-service/test_runtime.py
       - name: Validate production composition
         run: |
           docker compose --env-file .env.production.example -f compose.yaml -f compose.prod.yaml config --quiet
