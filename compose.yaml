@@ -10,6 +10,9 @@ services:
     build: ./embeddings-service
     user: "0:0"
     command: ["python", "/app/download_model.py"]
+    # This one-shot process does not run the inference HTTP server.
+    healthcheck:
+      disable: true
     environment:
       MODEL_DIRECTORY: /model
       MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-main}

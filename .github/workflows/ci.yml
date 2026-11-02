@@ -15,6 +15,7 @@ jobs:
       - name: Validate OpenAPI
         run: |
           python3 -O embeddings-service/test_integrity.py
+          python3 embeddings-service/test_download.py
           python3 -m venv /tmp/spec
           /tmp/spec/bin/pip install openapi-spec-validator==0.7.2
           /tmp/spec/bin/python -c 'import json; from openapi_spec_validator import validate_spec; validate_spec(json.load(open("docs/openapi.json")))'
