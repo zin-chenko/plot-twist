@@ -1,5 +1,6 @@
 package io.plottwist.domain.chat.application;
 
+import io.plottwist.domain.chat.application.port.ChatEvents;
 import io.plottwist.domain.chat.application.port.ChatRepository;
 import io.plottwist.domain.chat.model.*;
 import io.plottwist.domain.profile.application.ProfileService;
@@ -12,7 +13,10 @@ public class ChatService {
   private final ChatRepository chats;
   private final ProfileService profiles;
 
-  public ChatService(ChatRepository chats, ProfileService profiles) {
+  private final ChatEvents events;
+
+  public ChatService(ChatRepository chats, ProfileService profiles, ChatEvents events) {
+    this.events = events;
     this.chats = chats;
     this.profiles = profiles;
   }
@@ -32,6 +36,7 @@ public class ChatService {
       chats.create(id, low, high, actor);
     }
     chats.show(id, actor);
+    events.changed(id);
     return get(id, actor);
   }
 
@@ -69,6 +74,7 @@ public class ChatService {
     }
     var message = chats.insert(id, chat.lastSequence() + 1, actor, clientId, body);
     chats.advance(id, message.sequence(), message.createdAt());
+    events.changed(id);
     return new SendResult(message, true);
   }
 
@@ -97,7 +103,10 @@ public class ChatService {
     var chat = chats.lock(id, actor).orElseThrow(ChatService::missing);
     if (through < 0 || through > chat.lastSequence())
       throw invalid("Read position is outside this chat");
-    chats.read(id, actor, through);
+    if (through > chat.readThrough()) {
+      chats.read(id, actor, through);
+      events.changed(id);
+    }
     return get(id, actor);
   }
 

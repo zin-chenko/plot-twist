@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.10.0",
-    "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT. Private one-to-one chats are restricted to their two verified participants."
+    "version": "1.11.0",
+    "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT. Private one-to-one chats are restricted to their two verified participants. Native authenticated JSON WebSocket /ws/chats delivers commands and live invalidations; REST keeps paginated history."
   },
   "servers": [
     {
@@ -3058,6 +3058,42 @@
           }
         }
       }
+    },
+    "/ws/chats": {
+      "get": {
+        "operationId": "openChatWebSocket",
+        "summary": "Upgrade to the private JSON chat WebSocket",
+        "description": "Native WebSocket, not an ordinary HTTP API. Exact allowlisted Origin is required, query strings forbidden. Authentication happens in the first JSON auth frame within 10 seconds, so handshake security is intentionally empty. No user data before a valid JWT, scope api.read, audience plot-twist-domain and account_id == sub. send/read require api.write. See x-websocket and docs/chats.md. REST history/open routes remain available; Angular sends messages and read markers via this socket.",
+        "security": [],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact browser origin from CHAT_ALLOWED_ORIGINS"
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols; send auth frame next"
+          },
+          "400": {
+            "description": "Invalid WebSocket upgrade"
+          },
+          "403": {
+            "description": "Origin missing/not allowlisted or query string present"
+          },
+          "429": {
+            "description": "Handshake rate limit"
+          },
+          "503": {
+            "description": "Chat transport unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4140,6 +4176,212 @@
             "minimum": 0
           }
         }
+      },
+      "ChatSocketAuth": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "token"
+        ],
+        "properties": {
+          "type": {
+            "const": "auth"
+          },
+          "token": {
+            "type": "string",
+            "maxLength": 8192,
+            "description": "Verified user access token, first frame only. Never a URL parameter."
+          }
+        }
+      },
+      "ChatSocketSend": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "requestId",
+          "chatId",
+          "clientMessageId",
+          "body"
+        ],
+        "properties": {
+          "type": {
+            "const": "send"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "chatId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "clientMessageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        }
+      },
+      "ChatSocketRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "requestId",
+          "chatId",
+          "throughSequence"
+        ],
+        "properties": {
+          "type": {
+            "const": "read"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "chatId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "throughSequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ChatSocketPing": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "ping"
+          }
+        }
+      },
+      "ChatSocketReady": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "ready"
+          }
+        }
+      },
+      "ChatSocketPong": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "pong"
+          }
+        }
+      },
+      "ChatSocketChanged": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "chatId"
+        ],
+        "properties": {
+          "type": {
+            "const": "changed"
+          },
+          "chatId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ChatSocketMessageAck": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "requestId",
+          "message"
+        ],
+        "properties": {
+          "type": {
+            "const": "ack"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message": {
+            "$ref": "#/components/schemas/ChatMessage"
+          }
+        }
+      },
+      "ChatSocketReadAck": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "requestId",
+          "summary"
+        ],
+        "properties": {
+          "type": {
+            "const": "ack"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ChatSummary"
+          }
+        }
+      },
+      "ChatSocketError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "requestId",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "type": {
+            "const": "error"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              400,
+              403,
+              404,
+              409,
+              503
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -4158,5 +4400,58 @@
         }
       }
     }
+  },
+  "x-websocket": {
+    "path": "/ws/chats",
+    "protocol": "Native WebSocket; UTF-8 JSON text frames, max 32 KiB",
+    "clientMessages": {
+      "oneOf": [
+        {
+          "$ref": "#/components/schemas/ChatSocketAuth"
+        },
+        {
+          "$ref": "#/components/schemas/ChatSocketSend"
+        },
+        {
+          "$ref": "#/components/schemas/ChatSocketRead"
+        },
+        {
+          "$ref": "#/components/schemas/ChatSocketPing"
+        }
+      ]
+    },
+    "serverMessages": {
+      "oneOf": [
+        {
+          "$ref": "#/components/schemas/ChatSocketReady"
+        },
+        {
+          "$ref": "#/components/schemas/ChatSocketPong"
+        },
+        {
+          "$ref": "#/components/schemas/ChatSocketChanged"
+        },
+        {
+          "$ref": "#/components/schemas/ChatSocketMessageAck"
+        },
+        {
+          "$ref": "#/components/schemas/ChatSocketReadAck"
+        },
+        {
+          "$ref": "#/components/schemas/ChatSocketError"
+        }
+      ]
+    },
+    "authenticationTimeoutSeconds": 10,
+    "heartbeatSeconds": 20,
+    "ackTimeoutSeconds": 15,
+    "closeCodes": {
+      "4401": "Expired or invalid authentication; redirect to login",
+      "1007": "Malformed/unsupported JSON command",
+      "1008": "Authentication timeout or command rate violation",
+      "1012": "Broker consumer restarting/unavailable; reconnect and fetch REST after last sequence",
+      "1013": "Connection/send capacity reached; reconnect with backoff"
+    },
+    "delivery": "ACK means committed PostgreSQL transaction. Persist clientMessageId across retries; requestId identifies one attempt. RabbitMQ invalidations contain identifiers only and may repeat. After every ready/reconnect, refresh inbox and fetch messages after last sequence. No arbitrary chat subscriptions."
   }
 }

@@ -29,6 +29,8 @@ public class SecurityConfig {
                     .requestMatchers(
                         "/actuator/health", "/actuator/health/**", "/actuator/prometheus")
                     .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/ws/chats")
+                    .permitAll()
                     .requestMatchers(HttpMethod.HEAD, "/api/v1/story-media/*/content")
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/story-media/*/content")

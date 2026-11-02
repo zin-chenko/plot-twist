@@ -319,4 +319,42 @@ class ChatIntegrationTest {
                 .content(payload(Map.of("clientMessageId", nonce, "body", "changed"))))
         .andExpect(status().isConflict());
   }
+
+  @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+  @Test
+  void notificationsCommitWithMessagesAndHideUnopenedEmptyChats() {
+    var id = chats.open(a, b).id();
+    var recipients =
+        jdbc.queryForMap(
+            "SELECT recipient_low,recipient_high FROM chat_event_outbox WHERE chat_id=?", id);
+    assertTrue(recipients.containsValue(a));
+    assertFalse(recipients.containsValue(b));
+    var tx = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+    tx.executeWithoutResult(
+        status -> {
+          chats.send(id, a, UUID.randomUUID(), "rollback");
+          status.setRollbackOnly();
+        });
+    assertEquals(0, chats.get(id, a).lastSequence());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM chat_event_outbox WHERE chat_id=?", Integer.class, id));
+    var nonce = UUID.randomUUID();
+    chats.send(id, a, nonce, "committed");
+    chats.send(id, a, nonce, "committed");
+    chats.read(id, b, 1);
+    chats.read(id, b, 0);
+    assertEquals(
+        3,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM chat_event_outbox WHERE chat_id=?", Integer.class, id));
+    assertEquals(
+        2,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM chat_event_outbox WHERE chat_id=? AND recipient_low IS NOT NULL AND recipient_high IS NOT NULL",
+            Integer.class,
+            id));
+  }
 }

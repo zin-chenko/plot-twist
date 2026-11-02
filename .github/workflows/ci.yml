@@ -95,7 +95,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - name: Verify participant isolation, concurrent sends, retries and unread markers
+      - name: Verify WebSocket auth, fanout, reconnect, participant isolation and concurrent sends
         run: docker compose -p plot-twist-chat-test -f compose.chat-test.yaml run --rm --build chat-tests
       - name: Remove only isolated test resources
         if: always()

@@ -95,8 +95,9 @@ public class JdbcChatRepository implements ChatRepository {
   public Optional<LockedChat> lock(UUID id, UUID actor) {
     return jdbc
         .query(
-            "SELECT id,last_sequence FROM direct_chats WHERE id=? AND (user_low=? OR user_high=?) FOR UPDATE",
-            (r, n) -> new LockedChat(r.getObject(1, UUID.class), r.getLong(2)),
+            "SELECT id,last_sequence,CASE WHEN user_low=? THEN low_read_sequence ELSE high_read_sequence END AS read_through FROM direct_chats WHERE id=? AND (user_low=? OR user_high=?) FOR UPDATE",
+            (r, n) -> new LockedChat(r.getObject(1, UUID.class), r.getLong(2), r.getLong(3)),
+            actor,
             id,
             actor,
             actor)

@@ -119,6 +119,7 @@ services:
     environment: !override
       SPRING_PROFILES_ACTIVE: prod
       RABBITMQ_HOST: rabbitmq
+      CHAT_ALLOWED_ORIGINS: ${CHAT_ALLOWED_ORIGINS:?Set exact HTTPS frontend origins}
       EMBEDDING_URL: http://embeddings:8090
       QDRANT_URL: http://qdrant:6333
       DB_URL: jdbc:postgresql://postgres:5432/profiles
@@ -140,6 +141,7 @@ services:
       - {source: s3_secret_key, target: S3_SECRET_KEY}
     networks: !override [services, data, egress, vectors, moderation]
     depends_on: !override
+      rabbitmq: {condition: service_healthy}
       postgres-init: {condition: service_completed_successfully}
       auth-service: {condition: service_healthy}
   mailpit:

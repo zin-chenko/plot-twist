@@ -1,4 +1,4 @@
-# Private chat/concurrency checks with a separate PostgreSQL; no OAuth, S3, broker or model.
+# Private chat/socket checks with separate PostgreSQL and RabbitMQ; no OAuth, S3 or model.
 services:
   postgres:
     image: postgres:17
@@ -14,6 +14,22 @@ services:
       retries: 30
     command: ["postgres", "-c", "shared_buffers=16MB", "-c", "max_connections=30"]
     mem_limit: 256m
+  rabbitmq:
+    image: rabbitmq:4.2.9-alpine@sha256:aab85daef4295ab28df229600109434ed6ed7b966dd915baeb0fc396279f0e8e
+    hostname: chat-test
+    environment:
+      RABBITMQ_DEFAULT_USER: plot_twist
+      RABBITMQ_DEFAULT_PASS: plot-twist-rabbit-local
+      RABBITMQ_DEFAULT_VHOST: /plot-twist
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: +S 2:2
+    tmpfs: [/var/lib/rabbitmq:size=512m]
+    volumes: ["./docker/rabbitmq/rabbitmq.test.conf:/etc/rabbitmq/rabbitmq.conf:ro"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    mem_limit: 512m
   chat-tests:
     build:
       context: .
@@ -21,6 +37,8 @@ services:
       args: {MODULE: domain-service}
     environment:
       CHAT_INTEGRATION: "true"
+      CHAT_SOCKET_INTEGRATION: "true"
+      RABBITMQ_HOST: rabbitmq
       DB_URL: jdbc:postgresql://postgres:5432/profiles
       DB_USER: plot_twist
       DB_PASSWORD: plot_twist_local
@@ -28,6 +46,7 @@ services:
       AWS_EC2_METADATA_DISABLED: "true"
     depends_on:
       postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
     volumes: ["chat-test-maven:/root/.m2"]
     mem_limit: 1536m
 volumes:

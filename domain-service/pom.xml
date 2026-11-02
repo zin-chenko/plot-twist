@@ -9,6 +9,10 @@
   <artifactId>domain-service</artifactId>
   <dependencies>
     <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-websocket</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.plottwist</groupId>
       <artifactId>moderation-contract</artifactId>
       <version>${project.version}</version>

@@ -236,7 +236,7 @@ services:
       - /tmp:mode=1777
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    networks: [edge]
+    networks: [edge, services]
     restart: unless-stopped
     mem_limit: 128m
     depends_on:
@@ -364,12 +364,14 @@ services:
       S3_PATH_STYLE: "true"
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-plot-twist-rabbit-local}
+      CHAT_ALLOWED_ORIGINS: ${CHAT_ALLOWED_ORIGINS:-http://localhost:4200,http://127.0.0.1:4200,http://localhost:8080,http://127.0.0.1:8080}
       STORY_MEDIA_SIGNING_KEY: ${STORY_MEDIA_SIGNING_KEY:-plot-twist-local-story-media-key-change-before-production}
       EMBEDDING_URL: http://embeddings:8090
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-plot-twist-vector-local-key}
     networks: [services, data, storage, vectors, moderation]
     depends_on:
+      rabbitmq: {condition: service_healthy}
       postgres:
         condition: service_healthy
       auth-service:
