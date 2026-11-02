@@ -35,6 +35,7 @@ jobs:
           python3 scripts/test-auth.py --restart
           python3 scripts/test-profile.py
           python3 scripts/test-stories.py
+          python3 scripts/test-story-media.py
           python3 scripts/test-recommendations.py --semantic
           docker compose exec -T embeddings python - < embeddings-service/test_model.py
           docker compose run --rm --no-deps --entrypoint python -T embeddings - < scripts/test-vector-protocol.py
@@ -64,3 +65,18 @@ jobs:
       - name: Remove only isolated test resources
         if: always()
         run: docker compose -p plot-twist-moderation-test -f compose.moderation-test.yaml down -v
+  media-isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify uploads, animated GIFs, video codecs and private S3 ranges
+        run: |
+          docker compose -p plot-twist-media-test -f compose.media-test.yaml build
+          docker compose -p plot-twist-media-test -f compose.media-test.yaml run --rm media-tests
+      - name: Diagnostics
+        if: failure()
+        run: docker compose -p plot-twist-media-test -f compose.media-test.yaml logs --tail=80 postgres garage garage-init
+      - name: Remove only isolated test resources
+        if: always()
+        run: docker compose -p plot-twist-media-test -f compose.media-test.yaml down -v

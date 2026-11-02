@@ -39,7 +39,7 @@ def request(method, path, body=None, token=None, headers=None, expected=200):
     with response:
         assert (
             response.status == expected
-        ), f"{method} {path}: expected {expected}, got {response.status}"
+        ), f"{method} {path.split('?', 1)[0]}: expected {expected}, got {response.status}"
         data = response.read()
         if data and "json" in response.headers.get("Content-Type", ""):
             data = json.loads(data)

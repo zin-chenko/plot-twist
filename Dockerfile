@@ -20,6 +20,7 @@ RUN --mount=type=bind,source=pom.xml,target=/build/pom.xml,readonly \
 # Separate integration runner: only PostgreSQL, RabbitMQ and moderation worker are required.
 FROM maven:3.9.11-eclipse-temurin-25@sha256:407c4423cec0cf2981055bc2c6c0dc211d9605b6669279b95997f2d1c7e91e2c AS moderation-tests
 WORKDIR /workspace
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 COPY pom.xml ./
 COPY .mvn ./.mvn
 COPY auth-service/pom.xml ./auth-service/pom.xml
@@ -30,6 +31,8 @@ COPY domain-service ./domain-service
 ENTRYPOINT ["mvn", "-B", "-pl", "domain-service", "-am", "test"]
 
 FROM eclipse-temurin:25-jre-jammy@sha256:e0d8c47eccd7ec82d635542dfcd1f2b1293add6bdd7ffbeb650f8ec1b1335425
+ARG MODULE
+RUN if [ "$MODULE" = "domain-service" ]; then apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*; fi
 RUN groupadd --gid 999 app && useradd --uid 999 --gid app --no-create-home app
 WORKDIR /app
 RUN mkdir /app/keys && chown app:app /app/keys

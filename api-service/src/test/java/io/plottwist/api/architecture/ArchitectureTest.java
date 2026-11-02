@@ -39,6 +39,7 @@ class ArchitectureTest {
           .resideInAnyPackage(
               "io.plottwist.api.account.api..",
               "io.plottwist.api.profile.api..",
+              "io.plottwist.api.attachment.api..",
               "io.plottwist.api.story.api..",
               "io.plottwist.api.recommendation.api..",
               "..infrastructure..",
@@ -54,6 +55,7 @@ class ArchitectureTest {
           .resideInAnyPackage(
               "io.plottwist.api.account.api..",
               "io.plottwist.api.profile.api..",
+              "io.plottwist.api.attachment.api..",
               "io.plottwist.api.story.api..",
               "io.plottwist.api.recommendation.api..")
           .should()
@@ -74,6 +76,7 @@ class ArchitectureTest {
           .resideInAnyPackage(
               "io.plottwist.api.account.api..",
               "io.plottwist.api.profile.api..",
+              "io.plottwist.api.attachment.api..",
               "io.plottwist.api.story.api..",
               "io.plottwist.api.recommendation.api..");
 

@@ -119,7 +119,13 @@ public class StoryService {
   }
 
   private static StoryContent validate(StoryContent content) {
-    return new StoryContent(text(content.title(), 160), text(content.body(), 20000));
+    var validated = new StoryContent(text(content.title(), 160), text(content.body(), 20000));
+    try {
+      io.plottwist.moderation.contract.MediaMarkup.ids(validated.body());
+    } catch (IllegalArgumentException invalid) {
+      throw new StoryException(INVALID_INPUT, invalid.getMessage());
+    }
+    return validated;
   }
 
   private static String text(String value, int max) {

@@ -19,8 +19,9 @@ public class UploadBulkhead extends OncePerRequestFilter {
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws IOException, ServletException {
     boolean upload =
-        request.getMethod().equals("PUT")
-            && request.getRequestURI().equals("/api/v1/profile/photo");
+        request.getMethod().equals("PUT") && request.getRequestURI().equals("/api/v1/profile/photo")
+            || request.getMethod().equals("POST")
+                && request.getRequestURI().equals("/api/v1/story-media");
     if (!upload) {
       chain.doFilter(request, response);
       return;

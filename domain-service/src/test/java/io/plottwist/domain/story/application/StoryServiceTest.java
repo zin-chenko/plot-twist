@@ -122,6 +122,7 @@ class StoryServiceTest {
         0,
         "PUBLISHED",
         null,
-        0L);
+        0L,
+        List.of());
   }
 }

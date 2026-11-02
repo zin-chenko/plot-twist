@@ -40,6 +40,22 @@ public class ProblemAdvice {
     return problem(status, error.getMessage());
   }
 
+  @ExceptionHandler(io.plottwist.domain.attachment.application.AttachmentException.class)
+  ResponseEntity<ProblemDetail> attachment(
+      io.plottwist.domain.attachment.application.AttachmentException e) {
+    return problem(
+        switch (e.reason()) {
+          case NOT_FOUND -> HttpStatus.NOT_FOUND;
+          case INVALID -> HttpStatus.BAD_REQUEST;
+          case TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE;
+          case UNSUPPORTED -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+          case BUSY -> HttpStatus.TOO_MANY_REQUESTS;
+          case CONFLICT -> HttpStatus.CONFLICT;
+          case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+        },
+        e.getMessage());
+  }
+
   @ExceptionHandler(MediaException.class)
   ResponseEntity<ProblemDetail> media(MediaException error) {
     HttpStatus status =

@@ -13,6 +13,7 @@ public final class RuleEngine {
   private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+");
   private final List<Node> nodes = new ArrayList<>();
   private final String rulesHash;
+  private final boolean reviewMedia;
 
   private static class Node {
     final Map<String, Integer> edges = new HashMap<>();
@@ -23,8 +24,21 @@ public final class RuleEngine {
   private record Rule(String id, Outcome outcome) {}
 
   public RuleEngine(byte[] rules) {
+    this(rules, false);
+  }
+
+  public RuleEngine(byte[] rules, boolean reviewMedia) {
+    this.reviewMedia = reviewMedia;
     try {
-      rulesHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(rules));
+      rulesHash =
+          HexFormat.of()
+              .formatHex(
+                  MessageDigest.getInstance("SHA-256")
+                      .digest(
+                          (new String(rules, StandardCharsets.UTF_8)
+                                  + "\nmedia-review="
+                                  + reviewMedia)
+                              .getBytes(StandardCharsets.UTF_8)));
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);
     }
@@ -78,6 +92,8 @@ public final class RuleEngine {
     var matched = new LinkedHashMap<String, Outcome>();
     scan(words(task.title()), matched);
     scan(words(task.body()), matched);
+    if (reviewMedia && !MediaMarkup.ids(task.body()).isEmpty())
+      matched.put("media-review-required", Outcome.REVIEW);
     var outcome =
         matched.containsValue(Outcome.BLOCK)
             ? Outcome.BLOCK

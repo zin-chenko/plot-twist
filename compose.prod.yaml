@@ -8,6 +8,7 @@ services:
       - {source: rabbitmq_password, target: RABBITMQ_PASSWORD}
   moderation-service:
     environment: !override
+      MODERATION_MEDIA_REVIEW_REQUIRED: ${MODERATION_MEDIA_REVIEW_REQUIRED:-false}
       MODERATION_CONCURRENCY: ${MODERATION_CONCURRENCY:-2}
       RABBITMQ_HOST: rabbitmq
     secrets:
@@ -131,6 +132,7 @@ services:
       TRACING_ENABLED: ${TRACING_ENABLED:-false}
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://localhost:4318/v1/traces}
     secrets:
+      - {source: story_media_signing_key, target: STORY_MEDIA_SIGNING_KEY}
       - {source: rabbitmq_password, target: RABBITMQ_PASSWORD}
       - {source: qdrant_api_key, target: QDRANT_API_KEY}
       - {source: domain_db_password, target: DB_PASSWORD}
@@ -156,6 +158,7 @@ volumes:
   caddy-data:
   caddy-config:
 secrets:
+  story_media_signing_key: {file: ./secrets/story-media-signing-key}
   rabbitmq_password: {file: ./secrets/rabbitmq-password}
   qdrant_api_key: {file: ./secrets/qdrant-api-key}
   grafana_admin_password: {file: ./secrets/grafana-admin-password}

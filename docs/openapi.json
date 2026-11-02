@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT."
   },
   "servers": [
@@ -1797,6 +1797,229 @@
           }
         }
       }
+    },
+    "/api/v1/story-media": {
+      "post": {
+        "tags": [
+          "Story media"
+        ],
+        "summary": "Upload and validate an immutable private attachment",
+        "description": "JPEG/PNG up to 10 MiB, GIF up to 15 MiB, MP4 H.264/AAC or WebM up to 50 MiB and 120 seconds. Body is streamed as binary; declared MIME/filename is not trusted. Limits: 200 files and 500 MiB per user. Embed with ![caption](attachment:UUID) in story text.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 52428800
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated and stored; not yet public",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryAttachment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed media"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "A verified user is required"
+          },
+          "413": {
+            "description": "File, duration or decoded pixel budget exceeded"
+          },
+          "415": {
+            "description": "Unsupported type or codec"
+          },
+          "429": {
+            "description": "Upload capacity or storage quota exceeded"
+          },
+          "503": {
+            "description": "Storage or media processor unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/story-media/{id}/access": {
+      "get": {
+        "tags": [
+          "Story media"
+        ],
+        "summary": "Get an expiring playback URL for owned or published media",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Verified user required"
+          },
+          "404": {
+            "description": "No accessible attachment"
+          }
+        }
+      }
+    },
+    "/api/v1/story-media/{id}": {
+      "delete": {
+        "tags": [
+          "Story media"
+        ],
+        "summary": "Schedule deletion of an unused owned attachment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Scheduled for cleanup"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Still referenced by a working or published story"
+          }
+        }
+      }
+    },
+    "/api/v1/story-media/{id}/content": {
+      "get": {
+        "tags": [
+          "Story media"
+        ],
+        "summary": "Stream media using an expiring ticket",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "description": "One bytes=start-end, bytes=start-, or bytes=-suffix range"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Media stream",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Single byte range; Content-Range and Accept-Ranges returned"
+          },
+          "404": {
+            "description": "Invalid/expired ticket or revoked attachment access"
+          },
+          "416": {
+            "description": "Unsatisfiable or multiple ranges"
+          },
+          "429": {
+            "description": "Download capacity reached"
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "Story media"
+        ],
+        "summary": "Read media headers without fetching its contents",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content-Type, Content-Length and Accept-Ranges without a body"
+          },
+          "404": {
+            "description": "Invalid link or inaccessible media"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2094,7 +2317,8 @@
           "authorPhotoSha256",
           "moderationStatus",
           "moderationReason",
-          "publishedVersion"
+          "publishedVersion",
+          "attachments"
         ],
         "properties": {
           "id": {
@@ -2182,6 +2406,13 @@
             ],
             "format": "int64",
             "minimum": 0
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoryAttachment"
+            },
+            "maxItems": 8
           }
         }
       },
@@ -2383,6 +2614,87 @@
             }
           }
         ]
+      },
+      "StoryAttachment": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "contentType",
+          "sizeBytes",
+          "width",
+          "height",
+          "durationSeconds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "IMAGE",
+              "GIF",
+              "VIDEO"
+            ]
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/gif",
+              "video/mp4",
+              "video/webm"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 52428800
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12000
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12000
+          },
+          "durationSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 120
+          }
+        }
+      },
+      "MediaAccess": {
+        "type": "object",
+        "required": [
+          "media",
+          "url",
+          "expiresAt"
+        ],
+        "properties": {
+          "media": {
+            "$ref": "#/components/schemas/StoryAttachment"
+          },
+          "url": {
+            "type": "string",
+            "description": "Same-origin signed content path. Five-minute capability; not an OAuth access token."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     },
     "securitySchemes": {

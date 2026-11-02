@@ -1,0 +1,63 @@
+# Isolated media checks: no OAuth, gateway, frontend, recommendation model or RabbitMQ.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: plot_twist
+      POSTGRES_PASSWORD: plot_twist_local
+      POSTGRES_DB: profiles
+    tmpfs: [/var/lib/postgresql/data:size=512m]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plot_twist -d profiles"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    command: ["postgres", "-c", "shared_buffers=16MB", "-c", "max_connections=30"]
+    mem_limit: 256m
+  garage:
+    image: plot-twist-media-test-garage
+    build: ./docker/garage
+    volumes: ["media-test-garage:/var/lib/garage"]
+    healthcheck:
+      test: ["CMD", "garage", "status"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    mem_limit: 256m
+  garage-init:
+    image: plot-twist-media-test-garage
+    pull_policy: never
+    command: ["sh", "/init.sh"]
+    volumes: ["media-test-garage:/var/lib/garage"]
+    environment:
+      S3_BUCKET: plot-twist-media-test
+      S3_ACCESS_KEY: GK000000000000000000000000
+      S3_SECRET_KEY: '1111111111111111111111111111111111111111111111111111111111111111'
+    depends_on:
+      garage: {condition: service_healthy}
+  media-tests:
+    build:
+      context: .
+      target: moderation-tests
+      args: {MODULE: domain-service}
+    environment:
+      STORY_MEDIA_INTEGRATION: "true"
+      STORY_MEDIA_PROCESSOR_TEST: "true"
+      DB_URL: jdbc:postgresql://postgres:5432/profiles
+      DB_USER: plot_twist
+      DB_PASSWORD: plot_twist_local
+      S3_ENDPOINT: http://garage:3900
+      S3_REGION: garage
+      S3_BUCKET: plot-twist-media-test
+      S3_PATH_STYLE: "true"
+      S3_ACCESS_KEY: GK000000000000000000000000
+      S3_SECRET_KEY: '1111111111111111111111111111111111111111111111111111111111111111'
+      AWS_EC2_METADATA_DISABLED: "true"
+    depends_on:
+      postgres: {condition: service_healthy}
+      garage-init: {condition: service_completed_successfully}
+    volumes: ["media-test-maven:/root/.m2"]
+    mem_limit: 1536m
+volumes:
+  media-test-garage:
+  media-test-maven:

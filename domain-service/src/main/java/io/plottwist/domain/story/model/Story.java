@@ -19,4 +19,5 @@ public record Story(
     long commentCount,
     String moderationStatus,
     String moderationReason,
-    Long publishedVersion) {}
+    Long publishedVersion,
+    java.util.List<io.plottwist.domain.attachment.model.Attachment> attachments) {}

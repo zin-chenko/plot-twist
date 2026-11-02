@@ -44,7 +44,7 @@ class ModerationPersistenceTest {
         "Legacy",
         "Previously published");
     Flyway.configure().dataSource(ds).load().migrate();
-    stories = new JdbcStoryRepository(jdbc);
+    stories = new JdbcStoryRepository(jdbc, new ObjectMapper());
     decisions = new DecisionStore(jdbc, new ObjectMapper());
     index = new JdbcIndexJobs(jdbc, tx);
     outbox = new ModerationOutbox(jdbc);

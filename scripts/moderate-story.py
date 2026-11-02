@@ -25,7 +25,7 @@ WITH target AS (
  AND moderation_status IN ('REVIEW_REQUIRED','REJECTED') FOR UPDATE
 ), audit AS (
  INSERT INTO moderation_decisions(job_id,story_id,revision,content_hash,policy_version,rules_hash,outcome,rule_ids,source,operator_name,operator_reason)
- SELECT moderation_job_id,id,version,moderation_hash,'basic-v1',repeat('0',64),:'outcome','[]'::jsonb,'operator',:'operator',:'reason' FROM target RETURNING story_id
+ SELECT moderation_job_id,id,version,moderation_hash,'basic-v2',repeat('0',64),:'outcome','[]'::jsonb,'operator',:'operator',:'reason' FROM target RETURNING story_id
 )
 UPDATE stories s SET moderation_status=CASE WHEN :'outcome'='APPROVE' THEN 'PUBLISHED' ELSE 'REJECTED' END,
  moderation_reason=CASE WHEN :'outcome'='APPROVE' THEN NULL ELSE :'reason' END,

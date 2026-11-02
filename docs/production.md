@@ -80,3 +80,7 @@ One host, one PostgreSQL instance and one TLS ingress remain single points of fa
 Browser session/access lifetime is configured with `AUTH_SESSION_DURATION=4h` in `.env.production` (range `1m`–`12h`). Recreate auth-service and sign in again to apply it to a new token. See [session semantics and revocation limits](auth.md#продолжительность-браузерной-сессии).
 
 Semantic recommendations require a pinned local model revision, a private Qdrant secret, model-volume backup and derived-index recovery procedures. See [recommendation operations](recommendations.md). First model download needs explicit outbound network access; runtime inference and vector storage are private.
+
+## Story media upgrade
+
+The domain runtime now includes FFmpeg/ffprobe. Existing deployments must add the private `secrets/story-media-signing-key` file before restarting; see [media deployment instructions](story-media.md). Do not recreate other secrets. Include `stories/` objects in S3 permissions and backup policies. Text moderation plus technical validation publishes media posts by default; visual/audio content is not inspected. `MODERATION_MEDIA_REVIEW_REQUIRED=true` enables manual review for every media post.

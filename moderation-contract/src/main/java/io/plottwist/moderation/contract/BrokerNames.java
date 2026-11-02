@@ -7,5 +7,5 @@ public final class BrokerNames {
   public static final String RESULTS = "plot-twist.moderation.results.v1";
   public static final String DEAD = "plot-twist.moderation.dead.v1";
   public static final String EXCHANGE = "plot-twist.moderation.v1";
-  public static final String POLICY = "basic-v1";
+  public static final String POLICY = "basic-v2";
 }

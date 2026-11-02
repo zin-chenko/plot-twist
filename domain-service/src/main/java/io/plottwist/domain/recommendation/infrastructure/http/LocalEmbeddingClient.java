@@ -70,7 +70,10 @@ public class LocalEmbeddingClient implements EmbeddingGateway {
               .body(
                   Map.of(
                       "text",
-                      document.title() + "\n\n" + document.body(),
+                      document.title()
+                          + "\n\n"
+                          + io.plottwist.moderation.contract.MediaMarkup.textForEmbedding(
+                              document.body()),
                       "model_key",
                       model.key()))
               .retrieve()

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class JdbcStoryRepository implements StoryRepository {
   private final JdbcTemplate jdbc;
+  private final com.fasterxml.jackson.databind.ObjectMapper json;
   private static final String SELECT =
       """
       SELECT s.id,s.author_id,s.created_at,
@@ -20,6 +21,9 @@ public class JdbcStoryRepository implements StoryRepository {
       CASE WHEN s.author_id=? THEN s.updated_at ELSE s.published_updated_at END AS updated_at,
       CASE WHEN s.author_id=? THEN s.moderation_status ELSE 'PUBLISHED' END AS moderation_status,
       CASE WHEN s.author_id=? THEN s.moderation_reason ELSE NULL END AS moderation_reason,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('id',a.id,'kind',a.kind,'contentType',a.content_type,'sizeBytes',a.size_bytes,'width',a.width,'height',a.height,'durationSeconds',a.duration_seconds) ORDER BY ref.position)
+      FROM story_attachment_refs ref JOIN story_attachments a ON a.id=ref.attachment_id AND a.state='READY'
+      WHERE ref.story_id=s.id AND ref.revision=CASE WHEN s.author_id=? THEN s.version ELSE s.published_version END),'[]'::jsonb) AS attachments,
       s.published_version, COALESCE(p.display_name,'Читатель') AS author_name, m.sha256 AS author_photo_sha256,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=1) AS likes,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=-1) AS dislikes,
@@ -29,7 +33,8 @@ public class JdbcStoryRepository implements StoryRepository {
       LEFT JOIN media_objects m ON m.id=p.photo_id AND m.state='ACTIVE'
       """;
 
-  public JdbcStoryRepository(JdbcTemplate jdbc) {
+  public JdbcStoryRepository(JdbcTemplate jdbc, com.fasterxml.jackson.databind.ObjectMapper json) {
+    this.json = json;
     this.jdbc = jdbc;
   }
 
@@ -38,7 +43,7 @@ public class JdbcStoryRepository implements StoryRepository {
     String sql =
         SELECT + (author == null ? " WHERE s.published_version IS NOT NULL" : " WHERE true");
     var args = new ArrayList<Object>();
-    args.addAll(Collections.nCopies(7, viewer));
+    args.addAll(Collections.nCopies(8, viewer));
     if (liked) {
       sql +=
           " AND EXISTS (SELECT 1 FROM story_reactions liked WHERE liked.story_id=s.id AND liked.account_id=? AND liked.value=1)";
@@ -62,7 +67,7 @@ public class JdbcStoryRepository implements StoryRepository {
   public List<Story> findMany(List<UUID> ids, UUID viewer) {
     if (ids.isEmpty()) return List.of();
     var args = new ArrayList<Object>();
-    args.addAll(Collections.nCopies(7, viewer));
+    args.addAll(Collections.nCopies(8, viewer));
     args.addAll(ids);
     return jdbc.query(
         SELECT
@@ -75,19 +80,15 @@ public class JdbcStoryRepository implements StoryRepository {
 
   @Override
   public Optional<Story> find(UUID id, UUID viewer) {
+    var args = new ArrayList<Object>();
+    args.addAll(Collections.nCopies(8, viewer));
+    args.add(id);
+    args.add(viewer);
     return jdbc
         .query(
             SELECT + " WHERE s.id=? AND (s.author_id=? OR s.published_version IS NOT NULL)",
             this::story,
-            viewer,
-            viewer,
-            viewer,
-            viewer,
-            viewer,
-            viewer,
-            viewer,
-            id,
-            viewer)
+            args.toArray())
         .stream()
         .findFirst();
   }
@@ -104,12 +105,14 @@ public class JdbcStoryRepository implements StoryRepository {
       throw new io.plottwist.domain.story.application.StoryException(
           io.plottwist.domain.story.application.StoryException.Reason.TOO_MANY_PENDING,
           "Too many stories awaiting moderation; retry later");
+    var assets = checkAttachments(author, content.body());
     jdbc.update(
         "INSERT INTO stories(id,author_id,title,body) VALUES (?,?,?,?)",
         id,
         author,
         content.title(),
         content.body());
+    bind(id, 0, assets);
   }
 
   @Override
@@ -126,14 +129,18 @@ public class JdbcStoryRepository implements StoryRepository {
           io.plottwist.domain.story.application.StoryException.Reason.TOO_MANY_PENDING,
           "Too many stories awaiting moderation; retry later");
 
-    return jdbc.update(
-            "UPDATE stories SET title=?,body=?,version=version+1,updated_at=now() WHERE id=? AND author_id=? AND version=?",
-            content.title(),
-            content.body(),
-            id,
-            author,
-            version)
-        == 1;
+    var assets = checkAttachments(author, content.body());
+    boolean updated =
+        jdbc.update(
+                "UPDATE stories SET title=?,body=?,version=version+1,updated_at=now() WHERE id=? AND author_id=? AND version=?",
+                content.title(),
+                content.body(),
+                id,
+                author,
+                version)
+            == 1;
+    if (updated) bind(id, version + 1, assets);
+    return updated;
   }
 
   @Override
@@ -252,6 +259,48 @@ public class JdbcStoryRepository implements StoryRepository {
         == 1;
   }
 
+  private java.util.List<io.plottwist.domain.attachment.model.Attachment> attachments(
+      String source) {
+    try {
+      return json.readValue(
+          source,
+          new com.fasterxml.jackson.core.type.TypeReference<
+              java.util.List<io.plottwist.domain.attachment.model.Attachment>>() {});
+    } catch (java.io.IOException invalid) {
+      throw new IllegalStateException("Invalid attachment projection", invalid);
+    }
+  }
+
+  private List<UUID> checkAttachments(UUID owner, String body) {
+    var ids = io.plottwist.moderation.contract.MediaMarkup.ids(body);
+    if (ids.isEmpty()) return ids;
+    var args = new ArrayList<Object>();
+    args.add(owner);
+    args.addAll(ids);
+    var ready =
+        jdbc.queryForList(
+            "SELECT id FROM story_attachments WHERE owner_id=? AND state='READY' AND id IN ("
+                + String.join(",", Collections.nCopies(ids.size(), "?"))
+                + ") FOR SHARE",
+            UUID.class,
+            args.toArray());
+    if (ready.size() != ids.size())
+      throw new io.plottwist.domain.story.application.StoryException(
+          io.plottwist.domain.story.application.StoryException.Reason.INVALID_INPUT,
+          "An attachment is unavailable or belongs to another account");
+    return ids;
+  }
+
+  private void bind(UUID story, long revision, List<UUID> assets) {
+    for (int i = 0; i < assets.size(); i++)
+      jdbc.update(
+          "INSERT INTO story_attachment_refs(story_id,revision,attachment_id,position) VALUES(?,?,?,?)",
+          story,
+          revision,
+          assets.get(i),
+          i);
+  }
+
   private Story story(ResultSet r, int n) throws SQLException {
     return new Story(
         r.getObject("id", UUID.class),
@@ -269,7 +318,8 @@ public class JdbcStoryRepository implements StoryRepository {
         r.getLong("comment_count"),
         r.getString("moderation_status"),
         r.getString("moderation_reason"),
-        r.getObject("published_version", Long.class));
+        r.getObject("published_version", Long.class),
+        attachments(r.getString("attachments")));
   }
 
   private StoryComment comment(ResultSet r, int n) throws SQLException {

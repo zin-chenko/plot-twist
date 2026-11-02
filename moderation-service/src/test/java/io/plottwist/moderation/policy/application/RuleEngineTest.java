@@ -56,4 +56,14 @@ class RuleEngineTest {
     assertTrue(result.ruleIds().stream().allMatch(s -> s.startsWith("ru-")));
     assertEquals(64, result.rulesHash().length());
   }
+
+  @Test
+  void mediaUsesTextPolicyAndCanOptIntoHumanReview() throws Exception {
+    var media = task("Текст ![фото](attachment:" + UUID.randomUUID() + ")");
+    assertEquals(Outcome.APPROVE, engine().evaluate(media).outcome());
+    try (var input = getClass().getResourceAsStream("/policy/basic-v1.tsv")) {
+      assertEquals(
+          Outcome.REVIEW, new RuleEngine(input.readAllBytes(), true).evaluate(media).outcome());
+    }
+  }
 }
