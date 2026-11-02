@@ -3,6 +3,7 @@ package io.plottwist.domain.profile.infrastructure.persistence;
 import io.plottwist.domain.profile.application.port.ProfileRepository;
 import io.plottwist.domain.profile.model.Profile;
 import io.plottwist.domain.profile.model.ProfileDetails;
+import io.plottwist.domain.profile.model.PublicProfile;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -27,6 +28,29 @@ public class JdbcProfileRepository implements ProfileRepository {
   @Override
   public Optional<Profile> find(UUID owner) {
     return jdbc.query(SELECT, this::map, owner).stream().findFirst();
+  }
+
+  @Override
+  public Optional<PublicProfile> findPublic(UUID account) {
+    return jdbc
+        .query(
+            """
+        SELECT a.id,COALESCE(p.display_name,'Читатель') AS display_name,p.bio,m.sha256
+        FROM (SELECT ?::uuid AS id) a
+        LEFT JOIN user_profiles p ON p.account_id=a.id
+        LEFT JOIN media_objects m ON m.id=p.photo_id AND m.state='ACTIVE'
+        WHERE p.account_id IS NOT NULL OR EXISTS(
+          SELECT 1 FROM stories s WHERE s.author_id=a.id AND s.published_version IS NOT NULL)
+        """,
+            (row, n) ->
+                new PublicProfile(
+                    row.getObject("id", UUID.class),
+                    row.getString("display_name"),
+                    row.getString("bio"),
+                    row.getString("sha256")),
+            account)
+        .stream()
+        .findFirst();
   }
 
   @Override

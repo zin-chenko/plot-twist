@@ -80,3 +80,13 @@ jobs:
       - name: Remove only isolated test resources
         if: always()
         run: docker compose -p plot-twist-media-test -f compose.media-test.yaml down -v
+  profiles-isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify public profile privacy and published author feeds
+        run: docker compose -p plot-twist-profile-test -f compose.profile-test.yaml run --rm --build profile-tests
+      - name: Remove only isolated test resources
+        if: always()
+        run: docker compose -p plot-twist-profile-test -f compose.profile-test.yaml down -v

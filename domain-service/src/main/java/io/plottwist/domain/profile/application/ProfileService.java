@@ -7,6 +7,7 @@ import io.plottwist.domain.media.model.ImageDigest;
 import io.plottwist.domain.profile.application.port.ProfileRepository;
 import io.plottwist.domain.profile.model.Profile;
 import io.plottwist.domain.profile.model.ProfileDetails;
+import io.plottwist.domain.profile.model.PublicProfile;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,20 @@ public class ProfileService {
     return profiles
         .find(owner)
         .orElseThrow(() -> new ProfileException(NOT_FOUND, "Profile not found"));
+  }
+
+  public PublicProfile publicProfile(UUID account) {
+    return profiles
+        .findPublic(account)
+        .orElseThrow(() -> new ProfileException(NOT_FOUND, "Profile not found"));
+  }
+
+  public byte[] publicPhoto(PublicProfile profile) {
+    if (profile.photoSha256() == null) throw new ProfileException(NOT_FOUND, "Photo not found");
+    byte[] bytes = storage.get(profiles.activePhotoKey(profile.accountId()));
+    if (!ImageDigest.sha256(bytes).equals(profile.photoSha256()))
+      throw new ProfileException(UNAVAILABLE, "Photo changed during read; retry");
+    return bytes;
   }
 
   @Transactional

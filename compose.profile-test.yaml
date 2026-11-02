@@ -1,0 +1,34 @@
+# Public profile/privacy checks with a separate PostgreSQL; no OAuth, S3, broker or model.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: plot_twist
+      POSTGRES_PASSWORD: plot_twist_local
+      POSTGRES_DB: profiles
+    tmpfs: [/var/lib/postgresql/data:size=512m]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plot_twist -d profiles"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    command: ["postgres", "-c", "shared_buffers=16MB", "-c", "max_connections=30"]
+    mem_limit: 256m
+  profile-tests:
+    build:
+      context: .
+      target: moderation-tests
+      args: {MODULE: domain-service}
+    environment:
+      PUBLIC_PROFILE_INTEGRATION: "true"
+      DB_URL: jdbc:postgresql://postgres:5432/profiles
+      DB_USER: plot_twist
+      DB_PASSWORD: plot_twist_local
+      RECOMMENDATIONS_ENABLED: "false"
+      AWS_EC2_METADATA_DISABLED: "true"
+    depends_on:
+      postgres: {condition: service_healthy}
+    volumes: ["profile-test-maven:/root/.m2"]
+    mem_limit: 1536m
+volumes:
+  profile-test-maven:

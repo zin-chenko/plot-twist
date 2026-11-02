@@ -32,6 +32,15 @@ public class StoryService {
         .orElseThrow(() -> new StoryException(NOT_FOUND, "Story not found"));
   }
 
+  public FeedPage<Story> publishedByAuthor(UUID viewer, UUID author, String cursor, int limit) {
+    checkLimit(limit);
+    var rows = stories.publishedByAuthor(viewer, author, FeedCursor.decode(cursor), limit + 1);
+    var items = List.copyOf(rows.subList(0, Math.min(limit, rows.size())));
+    var last = items.isEmpty() ? null : items.getLast();
+    return new FeedPage<>(
+        items, rows.size() > limit ? FeedCursor.encode(last.createdAt(), last.id()) : null);
+  }
+
   @Transactional
   public Story create(UUID author, StoryContent content) {
     content = validate(content);

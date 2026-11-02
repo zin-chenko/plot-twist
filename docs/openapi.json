@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT."
   },
   "servers": [
@@ -2020,6 +2020,220 @@
           }
         }
       }
+    },
+    "/api/v1/profiles/{account}": {
+      "get": {
+        "operationId": "getPublicProfile",
+        "summary": "Read another user’s public nickname, description and avatar metadata",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProfile"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "No profile or published author exists for this account"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "description": "Requires a verified user token. The existing /api/v1/profile stays private and editable only by its owner. Unfilled authors with published stories get the fallback nickname and null description/avatar; unknown or private-only authors without a profile return 404."
+      }
+    },
+    "/api/v1/profiles/{account}/stories": {
+      "get": {
+        "operationId": "getAuthorStories",
+        "summary": "Read only approved stories by this author, newest first",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "description": "Opaque nextCursor from the previous page. Newest first; no offsets."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryPage"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "No profile or published author exists for this account"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "description": "Always projects the published text, version and attachments, including when viewed by the author. Drafts/rejections/pending edits are never included. myReaction belongs to the requesting account."
+      }
+    },
+    "/api/v1/profiles/{account}/photo": {
+      "get": {
+        "operationId": "getPublicProfilePhoto",
+        "summary": "Read the processed avatar of another user",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processed JPEG avatar; private S3 key is never exposed",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted SHA-256"
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Profile or avatar does not exist"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2695,6 +2909,41 @@
             "format": "date-time"
           }
         }
+      },
+      "PublicProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accountId",
+          "displayName",
+          "bio",
+          "photoSha256"
+        ],
+        "description": "Public information visible to authenticated verified users. Email, given/family names, birth date and private profile version are excluded. displayName is the existing nickname; it is not a unique login/handle.",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "photoSha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -2706,7 +2955,7 @@
             "tokenUrl": "/oauth2/token",
             "scopes": {
               "openid": "OIDC identity (optional)",
-              "api.read": "Read own profile",
+              "api.read": "Read own private profile and public profiles/stories",
               "api.write": "Change own profile"
             }
           }

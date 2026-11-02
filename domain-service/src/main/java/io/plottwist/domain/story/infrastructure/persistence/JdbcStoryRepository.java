@@ -79,6 +79,23 @@ public class JdbcStoryRepository implements StoryRepository {
   }
 
   @Override
+  public List<Story> publishedByAuthor(UUID viewer, UUID author, PagePosition before, int limit) {
+    // A public author page always shows the approved snapshot, even to its own author.
+    var args = new ArrayList<Object>(Collections.nCopies(7, null));
+    args.add(viewer); // my_reaction still belongs to the real viewer.
+    args.add(author);
+    String sql = SELECT + " WHERE s.published_version IS NOT NULL AND s.author_id=?";
+    if (before != null) {
+      sql += " AND (s.created_at,s.id) < (?,?)";
+      args.add(OffsetDateTime.ofInstant(before.createdAt(), java.time.ZoneOffset.UTC));
+      args.add(before.id());
+    }
+    args.add(limit);
+    return jdbc.query(
+        sql + " ORDER BY s.created_at DESC,s.id DESC LIMIT ?", this::story, args.toArray());
+  }
+
+  @Override
   public Optional<Story> find(UUID id, UUID viewer) {
     var args = new ArrayList<Object>();
     args.addAll(Collections.nCopies(8, viewer));

@@ -2,11 +2,14 @@ package io.plottwist.domain.profile.application.port;
 
 import io.plottwist.domain.profile.model.Profile;
 import io.plottwist.domain.profile.model.ProfileDetails;
+import io.plottwist.domain.profile.model.PublicProfile;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface ProfileRepository {
   Optional<Profile> find(UUID owner);
+
+  Optional<PublicProfile> findPublic(UUID account);
 
   boolean create(UUID owner, ProfileDetails details);
 
