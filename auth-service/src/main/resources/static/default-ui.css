@@ -1,0 +1,152 @@
+/* Visual skin for Spring Security's standard form. Authentication stays on auth-service. */
+:root {
+  color-scheme: dark;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: #f3f5ed;
+  background: #111510;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 110px 24px 70px;
+  background: radial-gradient(ellipse at 12% 25%, #dcf88a0b, transparent 50%), #111510;
+}
+body::before {
+  content: 'plot twist.';
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1160px, calc(100% - 48px));
+  padding: 18px 24px;
+  border: 1px solid #ffffff12;
+  border-radius: 20px;
+  background: #1a2019;
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -1px;
+  color: #dcf88a;
+}
+.content {
+  width: min(100%, 440px);
+  padding: 38px;
+  border: 1px solid #ffffff16;
+  border-radius: 25px;
+  background: linear-gradient(145deg, #222a20, #1a2019);
+  box-shadow: 0 24px 70px #0002;
+}
+form {
+  margin: 0;
+}
+h2 {
+  margin: 0 0 30px;
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -1px;
+  line-height: 1.25;
+}
+p {
+  margin: 0 0 21px;
+  color: #a0aa9a;
+  font-size: 13px;
+  line-height: 1.7;
+}
+label {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d5ddcd;
+}
+input:not([type='hidden']) {
+  display: block;
+  width: 100%;
+  min-height: 49px;
+  padding: 13px 15px;
+  color: #f3f5ed;
+  background: #141a13;
+  border: 1px solid #ffffff20;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 14px;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s;
+}
+input::placeholder {
+  color: #909b86;
+}
+input:not([type='hidden']):focus {
+  outline: none;
+  border-color: #dcf88a99;
+  box-shadow: 0 0 0 3px #dcf88a0b;
+}
+input:-webkit-autofill {
+  -webkit-text-fill-color: #f3f5ed;
+  box-shadow: 0 0 0 1000px #20291a inset;
+}
+button {
+  width: 100%;
+  min-height: 49px;
+  padding: 14px 20px;
+  border: 1px solid #dcf88a;
+  border-radius: 13px;
+  background: #dcf88a;
+  color: #202b12;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 7px;
+  transition:
+    transform 0.18s,
+    background 0.18s;
+}
+button:hover {
+  background: #e6ffa3;
+  transform: translateY(-2px);
+}
+:focus-visible {
+  outline: 2px solid #dcf88a;
+  outline-offset: 5px;
+}
+.alert {
+  padding: 13px 15px;
+  margin-bottom: 22px;
+  border-radius: 12px;
+  line-height: 1.7;
+  font-size: 13px;
+}
+.alert-danger {
+  background: #d9684810;
+  border: 1px solid #d9684830;
+  color: #f7b4a2;
+}
+.alert-success {
+  background: #dcf88a09;
+  border: 1px solid #dcf88a26;
+  color: #d4eca8;
+}
+a {
+  color: #dcf88a;
+  text-underline-offset: 4px;
+}
+@media (max-width: 480px) {
+  .content {
+    padding: 30px 25px;
+    border-radius: 22px;
+  }
+  h2 {
+    font-size: 27px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

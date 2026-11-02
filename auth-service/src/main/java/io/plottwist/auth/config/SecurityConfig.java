@@ -118,13 +118,16 @@ public class SecurityConfig {
                         "/actuator/health/**",
                         "/actuator/prometheus",
                         "/error",
+                        "/default-ui.css",
                         "/.well-known/appspecific/**")
                     .permitAll()
                     .anyRequest()
                     .authenticated())
         .formLogin(
             form ->
-                form.successHandler(
+                form.loginPage("/login")
+                    .permitAll()
+                    .successHandler(
                         (request, response, authentication) -> {
                           // Existing JDBC sessions retain their old timeout until a fresh login.
                           request
@@ -132,8 +135,7 @@ public class SecurityConfig {
                               .setMaxInactiveInterval(Math.toIntExact(sessionDuration.toSeconds()));
                           success.onAuthenticationSuccess(request, response, authentication);
                         })
-                    .failureHandler(
-                        (request, response, error) -> response.sendRedirect("/login?error")))
+                    .failureUrl("/login?error"))
         .build();
   }
 
