@@ -10,4 +10,6 @@ public record PublicProfile(
     String photoSha256,
     long followersCount,
     long followingCount,
-    boolean following) {}
+    boolean following,
+    long totalLikes,
+    long totalViews) {}

@@ -38,7 +38,11 @@ public class JdbcProfileRepository implements ProfileRepository {
         SELECT a.id,COALESCE(p.display_name,'Читатель') AS display_name,p.bio,m.sha256,
           (SELECT count(*) FROM user_follows f WHERE f.following_id=a.id) AS followers_count,
           (SELECT count(*) FROM user_follows f WHERE f.follower_id=a.id) AS following_count,
-          EXISTS(SELECT 1 FROM user_follows f WHERE f.follower_id=? AND f.following_id=a.id) AS following
+          EXISTS(SELECT 1 FROM user_follows f WHERE f.follower_id=? AND f.following_id=a.id) AS following,
+          (SELECT count(*) FROM stories s JOIN story_reactions r ON r.story_id=s.id
+            WHERE s.author_id=a.id AND s.published_version IS NOT NULL AND r.value=1) AS total_likes,
+          (SELECT count(*) FROM stories s JOIN story_views v ON v.story_id=s.id
+            WHERE s.author_id=a.id AND s.published_version IS NOT NULL) AS total_views
         FROM (SELECT ?::uuid AS id) a
         LEFT JOIN user_profiles p ON p.account_id=a.id
         LEFT JOIN media_objects m ON m.id=p.photo_id AND m.state='ACTIVE'
@@ -54,7 +58,9 @@ public class JdbcProfileRepository implements ProfileRepository {
                     row.getString("sha256"),
                     row.getLong("followers_count"),
                     row.getLong("following_count"),
-                    row.getBoolean("following")),
+                    row.getBoolean("following"),
+                    row.getLong("total_likes"),
+                    row.getLong("total_views")),
             viewer,
             account)
         .stream()

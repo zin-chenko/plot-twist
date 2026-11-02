@@ -70,7 +70,7 @@ class PublicProfileGatewayTest {
 
   @Test
   void anonymousMachineAndWriteOnlyCallersCannotReadPublicProfiles() throws Exception {
-    for (String suffix : List.of("", "/photo", "/stories")) {
+    for (String suffix : List.of("", "/photo", "/stories", "/followers", "/following")) {
       String path = "/api/v1/profiles/" + author + suffix;
       mvc.perform(get(path)).andExpect(status().isUnauthorized());
       mvc.perform(get(path).with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_api.read"))))
@@ -140,5 +140,22 @@ class PublicProfileGatewayTest {
     mvc.perform(get(path).with(user())).andExpect(status().isOk());
     verify(domain).exchange(HttpMethod.GET, path, "token", Map.of(), null, null);
     mvc.perform(get("/api/v1/stories/following")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void connectionListRoutesForwardTheCursorAndLimit() throws Exception {
+    for (String kind : List.of("followers", "following")) {
+      String route = "/api/v1/profiles/" + author + "/" + kind;
+      when(domain.exchange(
+              HttpMethod.GET, route + "?limit=2&cursor=opaque-page", "token", Map.of(), null, null))
+          .thenReturn(
+              ResponseEntity.ok().cacheControl(CacheControl.noStore()).body("{}".getBytes()));
+      mvc.perform(get(route).with(user()).param("limit", "2").param("cursor", "opaque-page"))
+          .andExpect(status().isOk())
+          .andExpect(header().string("Cache-Control", "no-store"));
+      verify(domain)
+          .exchange(
+              HttpMethod.GET, route + "?limit=2&cursor=opaque-page", "token", Map.of(), null, null);
+    }
   }
 }

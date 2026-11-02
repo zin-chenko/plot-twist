@@ -170,6 +170,15 @@ public class JdbcRecommendationStore implements RecommendationStore {
                   .isEmpty()) return false;
               jdbc.update(
                   """
+                  INSERT INTO story_views(story_id,account_id)
+                  SELECT id,? FROM stories WHERE id=? AND author_id<>? AND published_version IS NOT NULL
+                  ON CONFLICT DO NOTHING
+                  """,
+                  viewer,
+                  story,
+                  viewer);
+              jdbc.update(
+                  """
         INSERT INTO story_read_signals(account_id,story_id,read_at) VALUES(?,?,CASE WHEN ? THEN now() ELSE NULL END)
         ON CONFLICT(account_id,story_id) DO UPDATE SET opened_at=now(),
           read_at=CASE WHEN ? THEN now() ELSE story_read_signals.read_at END

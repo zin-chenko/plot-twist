@@ -67,6 +67,32 @@ public class PublicProfileGateway {
         null);
   }
 
+  @GetMapping({"/followers", "/following"})
+  ResponseEntity<byte[]> connections(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID account,
+      jakarta.servlet.http.HttpServletRequest request,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(defaultValue = "20") int limit) {
+    requireUser(jwt);
+    var uri =
+        UriComponentsBuilder.fromPath(
+                "/api/v1/profiles/"
+                    + account
+                    + (request.getRequestURI().endsWith("/followers")
+                        ? "/followers"
+                        : "/following"))
+            .queryParam("limit", limit);
+    if (cursor != null) uri.queryParam("cursor", cursor);
+    return domain.exchange(
+        HttpMethod.GET,
+        uri.build().encode().toUriString(),
+        jwt.getTokenValue(),
+        Map.of(),
+        null,
+        null);
+  }
+
   @DeleteMapping("/follow")
   ResponseEntity<byte[]> unfollow(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID account) {
     requireUser(jwt);

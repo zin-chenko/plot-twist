@@ -3,6 +3,7 @@ package io.plottwist.domain.profile.api;
 import io.plottwist.domain.config.AccountIdentity;
 import io.plottwist.domain.profile.application.FollowService;
 import io.plottwist.domain.profile.application.ProfileService;
+import io.plottwist.domain.profile.model.FollowPage;
 import io.plottwist.domain.profile.model.FollowState;
 import io.plottwist.domain.profile.model.PublicProfile;
 import java.util.UUID;
@@ -35,6 +36,28 @@ public class PublicProfileController {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(follows.setFollowing(AccountIdentity.require(jwt), account, true));
+  }
+
+  @GetMapping("/followers")
+  ResponseEntity<FollowPage> followers(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID account,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(defaultValue = "20") int limit) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(follows.members(AccountIdentity.require(jwt), account, true, cursor, limit));
+  }
+
+  @GetMapping("/following")
+  ResponseEntity<FollowPage> following(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID account,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(defaultValue = "20") int limit) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(follows.members(AccountIdentity.require(jwt), account, false, cursor, limit));
   }
 
   @DeleteMapping("/follow")

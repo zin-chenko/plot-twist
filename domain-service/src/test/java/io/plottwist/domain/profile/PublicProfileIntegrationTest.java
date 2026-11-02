@@ -42,6 +42,13 @@ class PublicProfileIntegrationTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired DecisionStore decisions;
   @Autowired FollowService follows;
+  @Autowired io.plottwist.domain.recommendation.application.RecommendationService recommendations;
+
+  @Autowired
+  io.plottwist.domain.recommendation.infrastructure.persistence.JdbcRecommendationStore
+      readingStore;
+
+  @Autowired org.springframework.core.env.Environment environment;
   @MockitoBean OutboxPublisher publisher;
   @MockitoBean ObjectStorage storage;
   UUID author = UUID.randomUUID(), reader = UUID.randomUUID(), other = UUID.randomUUID();
@@ -127,7 +134,7 @@ class PublicProfileIntegrationTest {
   void onlyPublicFieldsAndSanitizedPhotoAreVisibleToOtherUsers() throws Exception {
     profile();
     var view = getJson("/api/v1/profiles/" + author, reader);
-    assertEquals(7, view.size());
+    assertEquals(9, view.size());
     assertEquals(author.toString(), view.get("accountId").asText());
     assertEquals("Автор", view.get("displayName").asText());
     assertTrue(view.get("bio").asText().contains("Открытое описание"));
@@ -239,7 +246,7 @@ class PublicProfileIntegrationTest {
   @Test
   void userIdentityAndReadScopeAreRequired() throws Exception {
     profile();
-    for (String suffix : List.of("", "/photo", "/stories")) {
+    for (String suffix : List.of("", "/photo", "/stories", "/followers", "/following")) {
       String route = "/api/v1/profiles/" + author + suffix;
       mvc.perform(get(route)).andExpect(status().isUnauthorized());
       mvc.perform(get(route).with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_api.read"))))
@@ -456,5 +463,223 @@ class PublicProfileIntegrationTest {
             Long.class,
             edited,
             reader));
+  }
+
+  private void read(UUID viewer, UUID story, boolean completed) throws Exception {
+    mvc.perform(
+            post("/api/v1/stories/" + story + "/reading")
+                .with(user(viewer))
+                .contentType("application/json")
+                .content(
+                    "{\"completed\":" + completed + ",\"seconds\":" + (completed ? 20 : 0) + "}"))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  void profileStatisticsUseCurrentLikesAndDurableUniqueNonAuthorOpens() throws Exception {
+    profile();
+    UUID first = story(author, "First published", true),
+        second = story(author, "Second published", true);
+    UUID pending = story(author, "PRIVATE_PENDING", false),
+        foreign = story(other, "Other author", true);
+    for (UUID voter : List.of(reader, other, author))
+      mvc.perform(
+              put("/api/v1/stories/" + first + "/reaction")
+                  .with(user(voter))
+                  .contentType("application/json")
+                  .content("{\"value\":1}"))
+          .andExpect(status().isOk());
+    mvc.perform(
+            put("/api/v1/stories/" + second + "/reaction")
+                .with(user(reader))
+                .contentType("application/json")
+                .content("{\"value\":1}"))
+        .andExpect(status().isOk());
+    jdbc.update(
+        "INSERT INTO story_reactions(story_id,account_id,value) VALUES(?,?,1)", pending, reader);
+    jdbc.update(
+        "INSERT INTO story_reactions(story_id,account_id,value) VALUES(?,?,1)", foreign, reader);
+    read(reader, first, false);
+    read(reader, first, false);
+    read(reader, first, true);
+    read(other, first, false);
+    read(author, first, false);
+    read(reader, second, false);
+    read(reader, foreign, false);
+    mvc.perform(
+            post("/api/v1/stories/" + pending + "/reading")
+                .with(user(reader))
+                .contentType("application/json")
+                .content("{\"completed\":false,\"seconds\":0}"))
+        .andExpect(status().isNotFound());
+    var stats = getJson("/api/v1/profiles/" + author, reader);
+    assertEquals(4, stats.get("totalLikes").asLong());
+    assertEquals(3, stats.get("totalViews").asLong());
+    jdbc.update(
+        "UPDATE story_read_signals SET opened_at=now()-interval '91 days' WHERE account_id=?",
+        reader);
+    readingStore.cleanup();
+    assertEquals(3, getJson("/api/v1/profiles/" + author, reader).get("totalViews").asLong());
+    read(reader, first, false);
+    assertEquals(3, getJson("/api/v1/profiles/" + author, reader).get("totalViews").asLong());
+    mvc.perform(
+            put("/api/v1/stories/" + first)
+                .with(user(author))
+                .header("If-Match", "\"0\"")
+                .contentType("application/json")
+                .content("{\"title\":\"PRIVATE_EDIT\",\"body\":\"PRIVATE_DRAFT\"}"))
+        .andExpect(status().isAccepted());
+    assertEquals(4, getJson("/api/v1/profiles/" + author, reader).get("totalLikes").asLong());
+    mvc.perform(
+            put("/api/v1/stories/" + first + "/reaction")
+                .with(user(reader))
+                .contentType("application/json")
+                .content("{\"value\":-1}"))
+        .andExpect(status().isOk());
+    assertEquals(3, getJson("/api/v1/profiles/" + author, reader).get("totalLikes").asLong());
+    mvc.perform(delete("/api/v1/stories/" + second).with(user(author)).header("If-Match", "\"0\""))
+        .andExpect(status().isNoContent());
+    stats = getJson("/api/v1/profiles/" + author, reader);
+    assertEquals(2, stats.get("totalLikes").asLong());
+    assertEquals(2, stats.get("totalViews").asLong());
+  }
+
+  @Test
+  void concurrentOpensAndCompletedReadsCreateOneViewPerReaderAndStory() throws Exception {
+    profile();
+    UUID id = story(author, "Read concurrently", true);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var actions = new ArrayList<Callable<Boolean>>();
+      for (int i = 0; i < 12; i++) {
+        boolean completed = i % 2 == 0;
+        actions.add(
+            () -> {
+              recommendations.reading(reader, id, completed, completed ? 20 : 0);
+              return true;
+            });
+      }
+      for (var result : executor.invokeAll(actions)) assertTrue(result.get());
+    }
+    assertEquals(1, getJson("/api/v1/profiles/" + author, reader).get("totalViews").asLong());
+    read(other, id, false);
+    read(author, id, false);
+    assertEquals(2, getJson("/api/v1/profiles/" + author, reader).get("totalViews").asLong());
+  }
+
+  @Test
+  void connectionListsArePrivateFieldFreePaginatedAndBoundToTheRequestedDirection()
+      throws Exception {
+    profile();
+    jdbc.update(
+        "INSERT INTO user_profiles(account_id,display_name,given_name,bio) VALUES(?,?,?,?)",
+        reader,
+        "Первый читатель",
+        "PRIVATE_GIVEN",
+        "PRIVATE_BIO");
+    follow(reader, author, true);
+    follow(other, author, true);
+    follow(author, reader, true);
+    jdbc.update(
+        "UPDATE user_follows SET created_at=TIMESTAMPTZ '2026-01-01T00:00:00Z' WHERE following_id=?",
+        author);
+    var seen = new HashSet<UUID>();
+    String cursor = null, firstCursor = null;
+    do {
+      var request =
+          get("/api/v1/profiles/" + author + "/followers").with(user(author)).param("limit", "1");
+      if (cursor != null) request.param("cursor", cursor);
+      var page =
+          json.readTree(
+              mvc.perform(request)
+                  .andExpect(status().isOk())
+                  .andReturn()
+                  .getResponse()
+                  .getContentAsByteArray());
+      assertEquals(1, page.get("items").size());
+      var person = page.get("items").get(0);
+      assertEquals(4, person.size());
+      assertFalse(person.toString().contains("PRIVATE_"));
+      UUID id = UUID.fromString(person.get("accountId").asText());
+      assertTrue(seen.add(id));
+      assertEquals(id.equals(reader), person.get("following").asBoolean());
+      assertEquals(
+          id.equals(reader) ? "Первый читатель" : "Читатель", person.get("displayName").asText());
+      cursor = page.get("nextCursor").isNull() ? null : page.get("nextCursor").asText();
+      if (firstCursor == null) firstCursor = cursor;
+    } while (cursor != null);
+    assertEquals(Set.of(reader, other), seen);
+    var outgoing = getJson("/api/v1/profiles/" + author + "/following", other);
+    assertEquals(1, outgoing.get("items").size());
+    assertEquals(reader.toString(), outgoing.get("items").get(0).get("accountId").asText());
+    for (String route :
+        List.of(
+            "/api/v1/profiles/" + author + "/following",
+            "/api/v1/profiles/" + reader + "/followers"))
+      mvc.perform(get(route).with(user(reader)).param("cursor", firstCursor))
+          .andExpect(status().isBadRequest());
+    for (String invalid : List.of("", "bad", "a".repeat(241)))
+      mvc.perform(
+              get("/api/v1/profiles/" + author + "/followers")
+                  .with(user(reader))
+                  .param("cursor", invalid))
+          .andExpect(status().isBadRequest());
+    mvc.perform(
+            get("/api/v1/profiles/" + author + "/followers")
+                .with(user(reader))
+                .param("limit", "21"))
+        .andExpect(status().isBadRequest());
+    UUID empty = UUID.randomUUID();
+    assertTrue(getJson("/api/v1/profiles/" + empty + "/followers", empty).get("items").isEmpty());
+    mvc.perform(get("/api/v1/profiles/" + empty + "/followers").with(user(reader)))
+        .andExpect(status().isNotFound());
+    follow(other, author, false);
+    assertEquals(
+        1, getJson("/api/v1/profiles/" + author + "/followers", author).get("items").size());
+  }
+
+  @Test
+  void migrationRecoversRetainedHistoryButNotSelfViewsOrUnpublishedStories() {
+    String schema = "views_backfill_" + UUID.randomUUID().toString().replace("-", "");
+    String url = environment.getRequiredProperty("spring.datasource.url");
+    var ds =
+        new org.springframework.jdbc.datasource.DriverManagerDataSource(
+            url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema,
+            environment.getRequiredProperty("spring.datasource.username"),
+            environment.getRequiredProperty("spring.datasource.password"));
+    try {
+      org.flywaydb.core.Flyway.configure()
+          .dataSource(ds)
+          .schemas(schema)
+          .defaultSchema(schema)
+          .target("9")
+          .load()
+          .migrate();
+      var fixture = new JdbcTemplate(ds);
+      UUID published = UUID.randomUUID(), pending = UUID.randomUUID();
+      for (UUID id : List.of(published, pending))
+        fixture.update(
+            "INSERT INTO stories(id,author_id,title,body) VALUES(?,?,'Legacy','Text')", id, author);
+      fixture.update(
+          "UPDATE stories SET published_version=0,published_title=title,published_body=body,published_updated_at=updated_at,moderation_status='PUBLISHED' WHERE id=?",
+          published);
+      for (UUID viewer : List.of(reader, other, author))
+        fixture.update(
+            "INSERT INTO story_read_signals(account_id,story_id) VALUES(?,?)", viewer, published);
+      fixture.update(
+          "INSERT INTO story_read_signals(account_id,story_id) VALUES(?,?)", reader, pending);
+      org.flywaydb.core.Flyway.configure()
+          .dataSource(ds)
+          .schemas(schema)
+          .defaultSchema(schema)
+          .load()
+          .migrate();
+      assertEquals(2, fixture.queryForObject("SELECT count(*) FROM story_views", Long.class));
+      assertEquals(
+          0,
+          fixture.queryForObject(
+              "SELECT count(*) FROM story_views WHERE story_id=?", Long.class, pending));
+    } finally {
+      jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+    }
   }
 }
