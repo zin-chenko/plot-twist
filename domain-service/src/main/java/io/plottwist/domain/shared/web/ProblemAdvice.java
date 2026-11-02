@@ -21,6 +21,7 @@ public class ProblemAdvice {
           case NOT_FOUND -> HttpStatus.NOT_FOUND;
           case FORBIDDEN -> HttpStatus.FORBIDDEN;
           case VERSION_CHANGED -> HttpStatus.PRECONDITION_FAILED;
+          case TOO_MANY_PENDING -> HttpStatus.TOO_MANY_REQUESTS;
           case INVALID_INPUT -> HttpStatus.BAD_REQUEST;
         },
         error.getMessage());

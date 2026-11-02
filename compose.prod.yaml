@@ -1,6 +1,17 @@
 # Requires Docker Compose >= 2.24.4 (!override / !reset).
 # Always use a separate production project and real secret files; see docs/production.md.
 services:
+  rabbitmq:
+    environment:
+      RABBITMQ_DEFAULT_PASS: !reset null
+    secrets:
+      - {source: rabbitmq_password, target: RABBITMQ_PASSWORD}
+  moderation-service:
+    environment: !override
+      MODERATION_CONCURRENCY: ${MODERATION_CONCURRENCY:-2}
+      RABBITMQ_HOST: rabbitmq
+    secrets:
+      - {source: rabbitmq_password, target: RABBITMQ_PASSWORD}
   model-download:
     environment:
       MODEL_REQUIRE_PIN: "true"
@@ -106,6 +117,7 @@ services:
   domain-service:
     environment: !override
       SPRING_PROFILES_ACTIVE: prod
+      RABBITMQ_HOST: rabbitmq
       EMBEDDING_URL: http://embeddings:8090
       QDRANT_URL: http://qdrant:6333
       DB_URL: jdbc:postgresql://postgres:5432/profiles
@@ -119,11 +131,12 @@ services:
       TRACING_ENABLED: ${TRACING_ENABLED:-false}
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://localhost:4318/v1/traces}
     secrets:
+      - {source: rabbitmq_password, target: RABBITMQ_PASSWORD}
       - {source: qdrant_api_key, target: QDRANT_API_KEY}
       - {source: domain_db_password, target: DB_PASSWORD}
       - {source: s3_access_key, target: S3_ACCESS_KEY}
       - {source: s3_secret_key, target: S3_SECRET_KEY}
-    networks: !override [services, data, egress]
+    networks: !override [services, data, egress, vectors, moderation]
     depends_on: !override
       postgres-init: {condition: service_completed_successfully}
       auth-service: {condition: service_healthy}
@@ -143,6 +156,7 @@ volumes:
   caddy-data:
   caddy-config:
 secrets:
+  rabbitmq_password: {file: ./secrets/rabbitmq-password}
   qdrant_api_key: {file: ./secrets/qdrant-api-key}
   grafana_admin_password: {file: ./secrets/grafana-admin-password}
   pg_admin_password: {file: ./secrets/pg-admin-password}

@@ -13,7 +13,14 @@ public class JdbcStoryRepository implements StoryRepository {
   private final JdbcTemplate jdbc;
   private static final String SELECT =
       """
-      SELECT s.*, COALESCE(p.display_name,'Читатель') AS author_name, m.sha256 AS author_photo_sha256,
+      SELECT s.id,s.author_id,s.created_at,
+      CASE WHEN s.author_id=? THEN s.title ELSE s.published_title END AS title,
+      CASE WHEN s.author_id=? THEN s.body ELSE s.published_body END AS body,
+      CASE WHEN s.author_id=? THEN s.version ELSE s.published_version END AS version,
+      CASE WHEN s.author_id=? THEN s.updated_at ELSE s.published_updated_at END AS updated_at,
+      CASE WHEN s.author_id=? THEN s.moderation_status ELSE 'PUBLISHED' END AS moderation_status,
+      CASE WHEN s.author_id=? THEN s.moderation_reason ELSE NULL END AS moderation_reason,
+      s.published_version, COALESCE(p.display_name,'Читатель') AS author_name, m.sha256 AS author_photo_sha256,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=1) AS likes,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=-1) AS dislikes,
       COALESCE((SELECT r.value FROM story_reactions r WHERE r.story_id=s.id AND r.account_id=?),0) AS my_reaction,
@@ -28,9 +35,10 @@ public class JdbcStoryRepository implements StoryRepository {
 
   @Override
   public List<Story> feed(UUID viewer, UUID author, boolean liked, PagePosition before, int limit) {
-    String sql = SELECT + " WHERE true";
+    String sql =
+        SELECT + (author == null ? " WHERE s.published_version IS NOT NULL" : " WHERE true");
     var args = new ArrayList<Object>();
-    args.add(viewer);
+    args.addAll(Collections.nCopies(7, viewer));
     if (liked) {
       sql +=
           " AND EXISTS (SELECT 1 FROM story_reactions liked WHERE liked.story_id=s.id AND liked.account_id=? AND liked.value=1)";
@@ -54,21 +62,48 @@ public class JdbcStoryRepository implements StoryRepository {
   public List<Story> findMany(List<UUID> ids, UUID viewer) {
     if (ids.isEmpty()) return List.of();
     var args = new ArrayList<Object>();
-    args.add(viewer);
+    args.addAll(Collections.nCopies(7, viewer));
     args.addAll(ids);
     return jdbc.query(
-        SELECT + " WHERE s.id IN (" + String.join(",", Collections.nCopies(ids.size(), "?")) + ")",
+        SELECT
+            + " WHERE s.published_version IS NOT NULL AND s.id IN ("
+            + String.join(",", Collections.nCopies(ids.size(), "?"))
+            + ")",
         this::story,
         args.toArray());
   }
 
   @Override
   public Optional<Story> find(UUID id, UUID viewer) {
-    return jdbc.query(SELECT + " WHERE s.id=?", this::story, viewer, id).stream().findFirst();
+    return jdbc
+        .query(
+            SELECT + " WHERE s.id=? AND (s.author_id=? OR s.published_version IS NOT NULL)",
+            this::story,
+            viewer,
+            viewer,
+            viewer,
+            viewer,
+            viewer,
+            viewer,
+            viewer,
+            id,
+            viewer)
+        .stream()
+        .findFirst();
   }
 
   @Override
   public void create(UUID id, UUID author, StoryContent content) {
+    jdbc.queryForList(
+        "SELECT pg_advisory_xact_lock(hashtextextended(?::text,0))", author.toString());
+    if (jdbc.queryForObject(
+            "SELECT count(*) FROM stories WHERE author_id=? AND moderation_status='PENDING_MODERATION'",
+            Long.class,
+            author)
+        >= 20)
+      throw new io.plottwist.domain.story.application.StoryException(
+          io.plottwist.domain.story.application.StoryException.Reason.TOO_MANY_PENDING,
+          "Too many stories awaiting moderation; retry later");
     jdbc.update(
         "INSERT INTO stories(id,author_id,title,body) VALUES (?,?,?,?)",
         id,
@@ -79,6 +114,18 @@ public class JdbcStoryRepository implements StoryRepository {
 
   @Override
   public boolean update(UUID id, UUID author, long version, StoryContent content) {
+    jdbc.queryForList(
+        "SELECT pg_advisory_xact_lock(hashtextextended(?::text,0))", author.toString());
+    if (jdbc.queryForObject(
+            "SELECT count(*) FROM stories WHERE author_id=? AND id<>? AND moderation_status='PENDING_MODERATION'",
+            Long.class,
+            author,
+            id)
+        >= 20)
+      throw new io.plottwist.domain.story.application.StoryException(
+          io.plottwist.domain.story.application.StoryException.Reason.TOO_MANY_PENDING,
+          "Too many stories awaiting moderation; retry later");
+
     return jdbc.update(
             "UPDATE stories SET title=?,body=?,version=version+1,updated_at=now() WHERE id=? AND author_id=? AND version=?",
             content.title(),
@@ -98,7 +145,10 @@ public class JdbcStoryRepository implements StoryRepository {
 
   @Override
   public boolean lockForInteraction(UUID id) {
-    return !jdbc.queryForList("SELECT id FROM stories WHERE id=? FOR KEY SHARE", UUID.class, id)
+    return !jdbc.queryForList(
+            "SELECT id FROM stories WHERE id=? AND published_version IS NOT NULL FOR KEY SHARE",
+            UUID.class,
+            id)
         .isEmpty();
   }
 
@@ -216,7 +266,10 @@ public class JdbcStoryRepository implements StoryRepository {
         r.getLong("likes"),
         r.getLong("dislikes"),
         r.getInt("my_reaction"),
-        r.getLong("comment_count"));
+        r.getLong("comment_count"),
+        r.getString("moderation_status"),
+        r.getString("moderation_reason"),
+        r.getObject("published_version", Long.class));
   }
 
   private StoryComment comment(ResultSet r, int n) throws SQLException {

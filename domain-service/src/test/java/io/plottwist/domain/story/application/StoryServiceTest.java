@@ -107,6 +107,21 @@ class StoryServiceTest {
 
   private Story story(UUID id, UUID author) {
     return new Story(
-        id, author, "Name", null, "Title", "Body", 0, Instant.now(), Instant.now(), 0, 0, 0, 0);
+        id,
+        author,
+        "Name",
+        null,
+        "Title",
+        "Body",
+        0,
+        Instant.now(),
+        Instant.now(),
+        0,
+        0,
+        0,
+        0,
+        "PUBLISHED",
+        null,
+        0L);
   }
 }

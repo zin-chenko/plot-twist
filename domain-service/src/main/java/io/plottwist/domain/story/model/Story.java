@@ -16,4 +16,7 @@ public record Story(
     long likes,
     long dislikes,
     int myReaction,
-    long commentCount) {}
+    long commentCount,
+    String moderationStatus,
+    String moderationReason,
+    Long publishedVersion) {}

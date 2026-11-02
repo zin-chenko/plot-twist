@@ -40,7 +40,7 @@ public class JdbcIndexJobs implements IndexJobs {
     return jdbc
         .query(
             """
-      WITH candidate AS (SELECT story_id FROM story_vector_jobs WHERE tombstone AND NOT dead AND NOT EXISTS(SELECT 1 FROM stories s WHERE s.id=story_vector_jobs.story_id) AND available_at<=now()
+      WITH candidate AS (SELECT story_id FROM story_vector_jobs WHERE tombstone AND NOT dead AND NOT EXISTS(SELECT 1 FROM stories s WHERE s.id=story_vector_jobs.story_id AND s.published_version IS NOT NULL) AND available_at<=now()
       AND (locked_until IS NULL OR locked_until<now()) ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED)
       UPDATE story_vector_jobs j SET attempts=j.attempts+1,locked_until=now()+interval '2 minutes',lease_token=gen_random_uuid()
       FROM candidate c WHERE j.story_id=c.story_id RETURNING j.*
@@ -58,7 +58,7 @@ public class JdbcIndexJobs implements IndexJobs {
   public Optional<IndexDocument> document(UUID id) {
     return jdbc
         .query(
-            "SELECT id,author_id,version,title,body FROM stories WHERE id=?",
+            "SELECT id,author_id,published_version AS version,published_title AS title,published_body AS body FROM stories WHERE id=? AND published_version IS NOT NULL",
             (row, n) ->
                 new IndexDocument(
                     row.getObject("id", UUID.class),
@@ -88,7 +88,7 @@ public class JdbcIndexJobs implements IndexJobs {
           // transaction.
           var versions =
               jdbc.queryForList(
-                  "SELECT version FROM stories WHERE id=? FOR KEY SHARE",
+                  "SELECT published_version FROM stories WHERE id=? AND published_version IS NOT NULL FOR KEY SHARE",
                   Long.class,
                   job.storyId());
           var locked =
@@ -145,7 +145,7 @@ public class JdbcIndexJobs implements IndexJobs {
       INSERT INTO story_vector_jobs(story_id)
       SELECT s.id FROM stories s LEFT JOIN story_vector_state v ON v.story_id=s.id
       WHERE NOT EXISTS(SELECT 1 FROM story_vector_jobs j WHERE j.story_id=s.id)
-      AND (v.story_id IS NULL OR v.model_key<>? OR v.story_version<>s.version) LIMIT 500
+      AND s.published_version IS NOT NULL AND (v.story_id IS NULL OR v.model_key<>? OR v.story_version<>s.published_version) LIMIT 500
       ON CONFLICT DO NOTHING
       """,
         model.key());
@@ -156,7 +156,7 @@ public class JdbcIndexJobs implements IndexJobs {
     if (hits.isEmpty()) return Set.of();
     var ids = hits.stream().map(VectorHit::storyId).distinct().toList();
     jdbc.query(
-        "SELECT id,version FROM stories WHERE id IN ("
+        "SELECT id,published_version AS version FROM stories WHERE published_version IS NOT NULL AND id IN ("
             + String.join(",", Collections.nCopies(ids.size(), "?"))
             + ")",
         row -> {

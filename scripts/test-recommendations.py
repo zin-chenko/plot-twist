@@ -6,7 +6,7 @@ import time
 import uuid
 import subprocess
 from urllib.parse import quote
-from social_support import request, account
+from social_support import request, account, wait_published
 from auth_support import machine_token
 
 
@@ -66,16 +66,18 @@ def check():
     try:
         for title, body in fixtures:
             story, _ = request(
-                "POST", route, {"title": title, "body": body}, author, expected=201
+                "POST", route, {"title": title, "body": body}, author, expected=202
             )
+            wait_published(story["id"], author)
             created.append(story["id"])
         own, _ = request(
             "POST",
             route,
             {"title": "Own excluded", "body": "My own story"},
             reader,
-            expected=201,
+            expected=202,
         )
+        wait_published(own["id"], reader)
         request("GET", "/api/v1/recommendations", expected=401)
         request("GET", "/api/v1/recommendations", token=machine_token(), expected=403)
         request("GET", "/api/v1/recommendations?limit=21", token=reader, expected=400)
@@ -142,6 +144,7 @@ def check():
                 },
                 author,
                 {"If-Match": h["ETag"]},
+                expected=202,
             )
             deadline = time.monotonic() + 90
             while (

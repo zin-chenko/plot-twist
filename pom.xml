@@ -18,6 +18,8 @@
     <google-java-format.version>1.36.1</google-java-format.version>
   </properties>
   <modules>
+    <module>moderation-contract</module>
+    <module>moderation-service</module>
     <module>auth-service</module>
     <module>api-service</module>
     <module>domain-service</module>

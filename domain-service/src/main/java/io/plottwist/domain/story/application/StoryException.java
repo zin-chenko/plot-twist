@@ -5,6 +5,7 @@ public class StoryException extends RuntimeException {
     NOT_FOUND,
     FORBIDDEN,
     VERSION_CHANGED,
+    TOO_MANY_PENDING,
     INVALID_INPUT
   }
 

@@ -1,0 +1,63 @@
+# Always use a separate project: docker compose -p plot-twist-moderation-test -f compose.moderation-test.yaml ...
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: plot_twist
+      POSTGRES_PASSWORD: plot_twist_local
+      POSTGRES_DB: profiles
+    tmpfs: [/var/lib/postgresql/data:size=512m]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plot_twist -d profiles"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    command: ["postgres", "-c", "shared_buffers=16MB", "-c", "max_connections=30"]
+    mem_limit: 256m
+  rabbitmq:
+    image: rabbitmq:4.2.9-alpine@sha256:aab85daef4295ab28df229600109434ed6ed7b966dd915baeb0fc396279f0e8e
+    hostname: moderation-test
+    environment:
+      RABBITMQ_DEFAULT_USER: plot_twist
+      RABBITMQ_DEFAULT_PASS: plot-twist-rabbit-local
+      RABBITMQ_DEFAULT_VHOST: /plot-twist
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: +S 2:2
+    tmpfs: [/var/lib/rabbitmq:size=512m]
+    volumes: ["./docker/rabbitmq/rabbitmq.test.conf:/etc/rabbitmq/rabbitmq.conf:ro"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    mem_limit: 512m
+  moderation-service:
+    build:
+      context: .
+      args: {MODULE: moderation-service}
+    environment:
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      start_period: 30s
+    mem_limit: 384m
+  domain-tests:
+    build:
+      context: .
+      target: moderation-tests
+      args: {MODULE: domain-service}
+    environment:
+      MODERATION_INTEGRATION: "true"
+      DB_URL: jdbc:postgresql://postgres:5432/profiles
+      DB_USER: plot_twist
+      DB_PASSWORD: plot_twist_local
+      RABBITMQ_HOST: rabbitmq
+      RECOMMENDATIONS_ENABLED: "false"
+      AWS_EC2_METADATA_DISABLED: "true"
+    depends_on:
+      postgres: {condition: service_healthy}
+      moderation-service: {condition: service_healthy}
+    volumes: ["moderation-test-maven:/root/.m2"]
+    mem_limit: 1536m
+volumes:
+  moderation-test-maven:

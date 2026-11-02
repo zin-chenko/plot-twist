@@ -13,7 +13,7 @@ public class JdbcRecommendationStore implements RecommendationStore {
   private final TransactionTemplate transactions;
   private static final String ELIGIBLE =
       """
-      s.author_id<>? AND NOT EXISTS(SELECT 1 FROM story_reactions r WHERE r.story_id=s.id AND r.account_id=?)
+      s.published_version IS NOT NULL AND s.author_id<>? AND NOT EXISTS(SELECT 1 FROM story_reactions r WHERE r.story_id=s.id AND r.account_id=?)
       AND NOT EXISTS(SELECT 1 FROM story_read_signals e WHERE e.story_id=s.id AND e.account_id=? AND e.read_at>now()-interval '30 days')
       """;
 
@@ -52,7 +52,7 @@ public class JdbcRecommendationStore implements RecommendationStore {
       SELECT v.point_id FROM story_vector_state v JOIN stories s ON s.id=v.story_id
       LEFT JOIN story_reactions r ON r.story_id=s.id AND r.account_id=?
       LEFT JOIN story_read_signals e ON e.story_id=s.id AND e.account_id=?
-      WHERE v.model_key=? AND v.story_version=s.version AND s.author_id<>?
+      WHERE v.model_key=? AND v.story_version=s.published_version AND s.author_id<>?
       AND (r.value=1 OR r.value IS NULL AND e.read_at IS NOT NULL)
       ORDER BY CASE WHEN r.value=1 THEN 0 ELSE 1 END,COALESCE(r.reacted_at,e.read_at,s.updated_at) DESC,s.id LIMIT 18
       """,
@@ -63,7 +63,7 @@ public class JdbcRecommendationStore implements RecommendationStore {
             viewer);
     var negatives =
         jdbc.queryForList(
-            "SELECT v.point_id FROM story_vector_state v JOIN stories s ON s.id=v.story_id JOIN story_reactions r ON r.story_id=s.id WHERE r.account_id=? AND r.value=-1 AND v.model_key=? AND v.story_version=s.version ORDER BY r.reacted_at DESC,s.id LIMIT 12",
+            "SELECT v.point_id FROM story_vector_state v JOIN stories s ON s.id=v.story_id JOIN story_reactions r ON r.story_id=s.id WHERE r.account_id=? AND r.value=-1 AND v.model_key=? AND v.story_version=s.published_version ORDER BY r.reacted_at DESC,s.id LIMIT 12",
             UUID.class,
             viewer,
             model.key());
@@ -84,7 +84,7 @@ public class JdbcRecommendationStore implements RecommendationStore {
     args.add(limit);
     return jdbc.query(
         """
-      SELECT s.id,s.author_id,s.version,s.created_at,
+      SELECT s.id,s.author_id,s.published_version AS version,s.created_at,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=1) AS likes,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=-1) AS dislikes
       FROM stories s WHERE
@@ -115,7 +115,7 @@ public class JdbcRecommendationStore implements RecommendationStore {
               model,
               mode);
           jdbc.batchUpdate(
-              "WITH visible AS (SELECT id FROM stories WHERE id=? AND version=? FOR KEY SHARE) INSERT INTO recommendation_items(batch_id,position,story_id,story_version) SELECT ?,?,id,? FROM visible",
+              "WITH visible AS (SELECT id FROM stories WHERE id=? AND published_version=? FOR KEY SHARE) INSERT INTO recommendation_items(batch_id,position,story_id,story_version) SELECT ?,?,id,? FROM visible",
               ranked,
               100,
               (statement, c) -> {
@@ -146,7 +146,7 @@ public class JdbcRecommendationStore implements RecommendationStore {
 
   public List<BatchPosition> page(UUID viewer, UUID batch, int after, int limit) {
     return jdbc.query(
-        "SELECT s.id,i.position FROM recommendation_items i JOIN stories s ON s.id=i.story_id AND s.version=i.story_version WHERE i.batch_id=? AND i.position>? AND "
+        "SELECT s.id,i.position FROM recommendation_items i JOIN stories s ON s.id=i.story_id AND s.published_version=i.story_version WHERE i.batch_id=? AND i.position>? AND "
             + ELIGIBLE
             + " ORDER BY i.position LIMIT ?",
         (row, n) -> new BatchPosition(row.getObject("id", UUID.class), row.getInt("position")),
@@ -164,7 +164,9 @@ public class JdbcRecommendationStore implements RecommendationStore {
         transactions.execute(
             status -> {
               if (jdbc.queryForList(
-                      "SELECT id FROM stories WHERE id=? FOR KEY SHARE", UUID.class, story)
+                      "SELECT id FROM stories WHERE id=? AND published_version IS NOT NULL FOR KEY SHARE",
+                      UUID.class,
+                      story)
                   .isEmpty()) return false;
               jdbc.update(
                   """

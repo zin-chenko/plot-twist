@@ -4,6 +4,58 @@ x-log-config: &log-config
     max-size: "10m"
     max-file: "3"
 services:
+  rabbitmq:
+    logging: *log-config
+    image: rabbitmq:4.2.9-alpine@sha256:aab85daef4295ab28df229600109434ed6ed7b966dd915baeb0fc396279f0e8e
+    hostname: rabbitmq
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -r /run/secrets/RABBITMQ_PASSWORD ]; then
+          export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/RABBITMQ_PASSWORD)"
+        fi
+        exec docker-entrypoint.sh rabbitmq-server
+    environment:
+      RABBITMQ_DEFAULT_USER: plot_twist
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-plot-twist-rabbit-local}
+      RABBITMQ_DEFAULT_VHOST: /plot-twist
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: +S 2:2
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    networks: [moderation]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
+    security_opt: [no-new-privileges:true]
+  moderation-service:
+    logging: *log-config
+    env_file: ./monitoring/java-metrics.env
+    build:
+      context: .
+      args: {MODULE: moderation-service}
+    environment:
+      MODERATION_CONCURRENCY: ${MODERATION_CONCURRENCY:-2}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-plot-twist-rabbit-local}
+    networks: [moderation, services]
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 1
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
   model-download:
     logging: *log-config
     image: plot-twist-embeddings
@@ -309,10 +361,12 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GK000000000000000000000000}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-1111111111111111111111111111111111111111111111111111111111111111}
       S3_PATH_STYLE: "true"
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-plot-twist-rabbit-local}
       EMBEDDING_URL: http://embeddings:8090
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-plot-twist-vector-local-key}
-    networks: [services, data, storage, vectors]
+    networks: [services, data, storage, vectors, moderation]
     depends_on:
       postgres:
         condition: service_healthy
@@ -362,6 +416,8 @@ services:
         condition: service_healthy
     restart: "no"
 networks:
+  moderation:
+    internal: true
   vectors:
     internal: true
   model-download:
@@ -375,6 +431,7 @@ networks:
   data:
     internal: true
 volumes:
+  rabbitmq-data:
   embedding-model:
   qdrant-data:
   qdrant-snapshots:

@@ -44,7 +44,7 @@ public class StoryController {
 
   @GetMapping("/{id}/author/photo")
   ResponseEntity<byte[]> authorPhoto(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-    AccountIdentity.require(jwt);
+    stories.get(id, AccountIdentity.require(jwt));
     var photo = photos.metadata(id);
     return ResponseEntity.ok()
         .contentType(MediaType.IMAGE_JPEG)
@@ -59,7 +59,8 @@ public class StoryController {
   ResponseEntity<Story> create(
       @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody StoryRequest body) {
     var story = stories.create(AccountIdentity.require(jwt), body.content());
-    return ResponseEntity.created(URI.create("/api/v1/stories/" + story.id()))
+    return ResponseEntity.accepted()
+        .location(URI.create("/api/v1/stories/" + story.id()))
         .cacheControl(CacheControl.noStore())
         .eTag(tag(story))
         .body(story);
@@ -71,8 +72,11 @@ public class StoryController {
       @PathVariable UUID id,
       @RequestHeader(value = "If-Match", required = false) String match,
       @Valid @RequestBody StoryRequest body) {
-    return response(
-        stories.update(id, AccountIdentity.require(jwt), version(match), body.content()));
+    var story = stories.update(id, AccountIdentity.require(jwt), version(match), body.content());
+    return ResponseEntity.accepted()
+        .cacheControl(CacheControl.noStore())
+        .eTag(tag(story))
+        .body(story);
   }
 
   @DeleteMapping("/{id}")
@@ -118,7 +122,7 @@ public class StoryController {
   @GetMapping("/{id}/comments/{commentId}")
   ResponseEntity<StoryComment> getComment(
       @AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @PathVariable UUID commentId) {
-    AccountIdentity.require(jwt);
+    stories.get(id, AccountIdentity.require(jwt));
     var comment = stories.getComment(id, commentId);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())

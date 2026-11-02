@@ -9,7 +9,7 @@ group.add_argument("--all", action="store_true")
 group.add_argument("--retry-dead", action="store_true")
 args = p.parse_args()
 statement = (
-    """INSERT INTO story_vector_jobs(story_id) SELECT id FROM stories WHERE true ON CONFLICT(story_id) DO UPDATE SET generation=story_vector_jobs.generation+1,attempts=0,dead=false,available_at=now(),last_error=NULL"""
+    """INSERT INTO story_vector_jobs(story_id) SELECT id FROM stories WHERE published_version IS NOT NULL ON CONFLICT(story_id) DO UPDATE SET generation=story_vector_jobs.generation+1,attempts=0,dead=false,available_at=now(),last_error=NULL"""
     if args.all
     else "UPDATE story_vector_jobs SET attempts=0,dead=false,available_at=now(),last_error=NULL WHERE dead"
 )

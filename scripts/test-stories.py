@@ -13,7 +13,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from auth_support import BASE, user_grant, machine_token
-from social_support import request, account, png
+from social_support import request, account, png, wait_published
 
 def check():
     email,password,author=account()
@@ -30,7 +30,8 @@ def check():
                     {'title':'Valid','body':'Text','authorId':str(uuid.uuid4())}]:
             request('POST',path,bad,author,expected=400)
         for i in range(3):
-            story,h=request('POST',path,{'title':f'История {i}','body':'Текст истории. <script>alert(1)</script>'},author,expected=201)
+            story,h=request('POST',path,{'title':f'История {i}','body':'Текст истории. <script>alert(1)</script>'},author,expected=202)
+            wait_published(story['id'],author)
             created.append(story['id'])
             assert h['ETag']=='"0"' and h['Cache-Control']=='no-store'
             assert 'email' not in story and 'birthDate' not in story and story['authorName']=='Читатель'
@@ -43,13 +44,14 @@ def check():
         # Competing author writes must allow only one writer for the same version.
         def edit(i):
             try:
-                request('PUT',route,{'title':f'Edited {i}','body':'Edited body'},author,{'If-Match':'"0"'})
-                return 200
+                request('PUT',route,{'title':f'Edited {i}','body':'Edited body'},author,{'If-Match':'"0"'},expected=202)
+                return 202
             except AssertionError as error:
                 assert 'got 412' in str(error), str(error)
                 return 412
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            assert sorted(pool.map(edit,range(2)))==[200,412]
+            assert sorted(pool.map(edit,range(2)))==[202,412]
+        wait_published(sid,author)
         request('DELETE',route,token=author,headers={'If-Match':'"0"'},expected=412)
         private_profile={'displayName':'Автор истории','givenName':'PRIVATE_NAME','familyName':None,'bio':'PRIVATE_BIO','birthDate':'1990-01-02'}
         request('PUT','/api/v1/profile',private_profile,author,{'If-None-Match':'*'},expected=201)
@@ -106,12 +108,12 @@ def check():
         def edit_comment(i):
             try:
                 request('PUT',comment_path,{'body':f'Edited comment {i}'},reader,{'If-Match':ch['ETag']})
-                return 200
+                return 202
             except AssertionError as error:
                 assert 'got 412' in str(error), str(error)
                 return 412
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            assert sorted(pool.map(edit_comment,range(2)))==[200,412]
+            assert sorted(pool.map(edit_comment,range(2)))==[202,412]
         updated,uh=request('GET',comment_path,token=author)
         assert updated['version']==1 and uh['ETag']=='"1"' and updated['body'].startswith('Edited comment')
         assert request('GET',route,token=author)[0]['commentCount']==3
@@ -128,7 +130,7 @@ def check():
         # Cursor pagination remains stable when new posts arrive and the anchor is deleted.
         page,_=request('GET',path+'?mine=true&limit=2',token=author)
         assert len(page['items'])==2 and page['nextCursor']
-        new,_=request('POST',path,{'title':'New arrival','body':'After page one'},author,expected=201)
+        new,_=request('POST',path,{'title':'New arrival','body':'After page one'},author,expected=202)
         created.append(new['id'])
         anchor=page['items'][-1]
         request('DELETE',path+'/'+anchor['id'],token=author,headers={'If-Match':'"'+str(anchor['version'])+'"'},expected=204)

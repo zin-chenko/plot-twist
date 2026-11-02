@@ -1,0 +1,19 @@
+# Outcome<TAB>stable rule ID<TAB>phrase; change policy version when changing semantics.
+BLOCK	ru-bljad	блядь
+BLOCK	ru-bljat	блять
+BLOCK	ru-obfuscated-blt	бл*ть
+BLOCK	ru-pizda	пизда
+BLOCK	ru-pizdec	пиздец
+BLOCK	ru-pizdet	пиздеть
+BLOCK	ru-huj	хуй
+BLOCK	ru-huja	хуя
+BLOCK	ru-hujnja	хуйня
+BLOCK	ru-nahuj	нахуй
+BLOCK	ru-pohuj	похуй
+BLOCK	ru-ohuet	охуеть
+BLOCK	ru-ebat	ебать
+BLOCK	ru-ebanyj	ебаный
+BLOCK	ru-ebanutyj	ебанутый
+BLOCK	ru-zaebal	заебал
+BLOCK	en-fuck	fuck
+REVIEW	ru-suka	сука

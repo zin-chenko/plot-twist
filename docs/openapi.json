@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT."
   },
   "servers": [
@@ -924,8 +924,26 @@
           }
         ],
         "responses": {
-          "201": {
-            "description": "OK",
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Too many stories awaiting moderation"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          },
+          "202": {
+            "description": "Accepted for asynchronous moderation; pending content is visible only to its author",
             "content": {
               "application/json": {
                 "schema": {
@@ -947,24 +965,6 @@
                 "description": "Quoted story content version; reactions and comments do not change this version."
               }
             }
-          },
-          "400": {
-            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
-          },
-          "401": {
-            "description": "Missing or invalid access token"
-          },
-          "403": {
-            "description": "Missing scope/verified account, or content belongs to another author"
-          },
-          "404": {
-            "description": "Story/comment not found"
-          },
-          "429": {
-            "description": "Gateway rate limit exceeded"
-          },
-          "503": {
-            "description": "Data service unavailable"
           }
         },
         "requestBody": {
@@ -1057,30 +1057,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Story"
-                }
-              }
-            },
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "no-store"
-              },
-              "ETag": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "Quoted story content version; reactions and comments do not change this version."
-              }
-            }
-          },
           "400": {
             "description": "Invalid UUID, text, page size/cursor or unsupported fields"
           },
@@ -1104,6 +1080,30 @@
           },
           "428": {
             "description": "If-Match required"
+          },
+          "202": {
+            "description": "Accepted for asynchronous moderation; pending content is visible only to its author",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Story"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted story content version; reactions and comments do not change this version."
+              }
+            }
           }
         },
         "requestBody": {
@@ -2091,7 +2091,10 @@
           "dislikes",
           "myReaction",
           "commentCount",
-          "authorPhotoSha256"
+          "authorPhotoSha256",
+          "moderationStatus",
+          "moderationReason",
+          "publishedVersion"
         ],
         "properties": {
           "id": {
@@ -2156,6 +2159,29 @@
             ],
             "pattern": "^[0-9a-f]{64}$",
             "description": "Active author avatar fingerprint, or null. Download only through the authenticated story author/photo endpoint."
+          },
+          "moderationStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING_MODERATION",
+              "PUBLISHED",
+              "REJECTED",
+              "REVIEW_REQUIRED"
+            ]
+          },
+          "moderationReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publishedVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

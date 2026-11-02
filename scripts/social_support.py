@@ -101,3 +101,19 @@ def account():
     request("POST", "/auth/v1/email-verifications", {"token": code}, expected=400)
     tokens, _ = user_grant("openid api.read api.write", address, password)
     return address, password, tokens["access_token"]
+
+
+def wait_published(story_id, token, timeout=45):
+    """Wait for real asynchronous moderation; never forge an approval in fixtures."""
+    deadline = time.monotonic() + timeout
+    while True:
+        story, headers = request("GET", "/api/v1/stories/" + story_id, token=token)
+        if story["moderationStatus"] == "PUBLISHED":
+            return story, headers
+        assert (
+            story["moderationStatus"] == "PENDING_MODERATION"
+        ), "Fixture was rejected or requires review"
+        assert (
+            time.monotonic() < deadline
+        ), "Moderation did not finish; inspect RabbitMQ/moderation-service/outbox"
+        time.sleep(0.5)
