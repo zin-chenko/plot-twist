@@ -28,7 +28,7 @@ public class JdbcStoryRepository implements StoryRepository {
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=1) AS likes,
       (SELECT count(*) FROM story_reactions r WHERE r.story_id=s.id AND r.value=-1) AS dislikes,
       COALESCE((SELECT r.value FROM story_reactions r WHERE r.story_id=s.id AND r.account_id=?),0) AS my_reaction,
-      (SELECT count(*) FROM story_comments c WHERE c.story_id=s.id) AS comment_count
+      (SELECT count(*) FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS comment_count
       FROM stories s LEFT JOIN user_profiles p ON p.account_id=s.author_id
       LEFT JOIN media_objects m ON m.id=p.photo_id AND m.state='ACTIVE'
       """;
@@ -207,61 +207,6 @@ public class JdbcStoryRepository implements StoryRepository {
   }
 
   @Override
-  public List<StoryComment> comments(UUID story, PagePosition before, int limit) {
-    String sql =
-        "SELECT c.*,COALESCE(p.display_name,'Читатель') AS author_name FROM story_comments c LEFT JOIN user_profiles p ON p.account_id=c.author_id WHERE c.story_id=?";
-    var args = new ArrayList<Object>();
-    args.add(story);
-    if (before != null) {
-      sql += " AND (c.created_at,c.id) < (?,?)";
-      args.add(OffsetDateTime.ofInstant(before.createdAt(), java.time.ZoneOffset.UTC));
-      args.add(before.id());
-    }
-    sql += " ORDER BY c.created_at DESC,c.id DESC LIMIT ?";
-    args.add(limit);
-    return jdbc.query(sql, this::comment, args.toArray());
-  }
-
-  @Override
-  public StoryComment comment(UUID id, UUID story, UUID author, String body) {
-    jdbc.update(
-        "INSERT INTO story_comments(id,story_id,author_id,body) VALUES (?,?,?,?)",
-        id,
-        story,
-        author,
-        body);
-    return jdbc.query(
-            "SELECT c.*,COALESCE(p.display_name,'Читатель') AS author_name FROM story_comments c LEFT JOIN user_profiles p ON p.account_id=c.author_id WHERE c.id=?",
-            this::comment,
-            id)
-        .getFirst();
-  }
-
-  @Override
-  public Optional<StoryComment> findComment(UUID story, UUID comment) {
-    return jdbc
-        .query(
-            "SELECT c.*,COALESCE(p.display_name,'Читатель') AS author_name FROM story_comments c LEFT JOIN user_profiles p ON p.account_id=c.author_id WHERE c.story_id=? AND c.id=?",
-            this::comment,
-            story,
-            comment)
-        .stream()
-        .findFirst();
-  }
-
-  @Override
-  public boolean updateComment(UUID story, UUID comment, UUID author, long version, String body) {
-    return jdbc.update(
-            "UPDATE story_comments SET body=?,version=version+1,updated_at=now() WHERE story_id=? AND id=? AND author_id=? AND version=?",
-            body,
-            story,
-            comment,
-            author,
-            version)
-        == 1;
-  }
-
-  @Override
   public Optional<AuthorPhoto> authorPhoto(UUID story) {
     return jdbc
         .query(
@@ -270,28 +215,6 @@ public class JdbcStoryRepository implements StoryRepository {
             story)
         .stream()
         .findFirst();
-  }
-
-  @Override
-  public Optional<UUID> commentAuthor(UUID story, UUID comment) {
-    return jdbc
-        .queryForList(
-            "SELECT author_id FROM story_comments WHERE story_id=? AND id=?",
-            UUID.class,
-            story,
-            comment)
-        .stream()
-        .findFirst();
-  }
-
-  @Override
-  public boolean deleteComment(UUID story, UUID comment, UUID author) {
-    return jdbc.update(
-            "DELETE FROM story_comments WHERE story_id=? AND id=? AND author_id=?",
-            story,
-            comment,
-            author)
-        == 1;
   }
 
   private java.util.List<io.plottwist.domain.attachment.model.Attachment> attachments(
@@ -355,17 +278,5 @@ public class JdbcStoryRepository implements StoryRepository {
         r.getString("moderation_reason"),
         r.getObject("published_version", Long.class),
         attachments(r.getString("attachments")));
-  }
-
-  private StoryComment comment(ResultSet r, int n) throws SQLException {
-    return new StoryComment(
-        r.getObject("id", UUID.class),
-        r.getObject("story_id", UUID.class),
-        r.getObject("author_id", UUID.class),
-        r.getString("author_name"),
-        r.getString("body"),
-        r.getTimestamp("created_at").toInstant(),
-        r.getTimestamp("updated_at").toInstant(),
-        r.getLong("version"));
   }
 }

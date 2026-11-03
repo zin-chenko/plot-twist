@@ -38,3 +38,5 @@ io.plottwist.domain
 Пакет `chat` отвечает за приватную переписку один на один: участники, последовательности сообщений, идемпотентность, курсорная история и read markers. Данные — в PostgreSQL, Flyway V11; публичная модерация/рекомендации не получают тексты. [Контракт и проверки](../docs/chats.md).
 
 `chat.api.ChatSocketHandler` реализует нативный JSON WebSocket, а `chat.infrastructure.messaging` — fanout через RabbitMQ и transactional outbox V12. Тела сообщений остаются в PostgreSQL; события содержат только идентификаторы. [Протокол, авторизация и reconnect](../docs/chats.md#websocket-доставка-и-реплики).
+
+`CommentService` и отдельный `JdbcCommentRepository` реализуют лайки, сортировку и ответы; V13 добавляет связи веток, counter и краткоживущие ranking batches. [API, конкурентность и тесты](../docs/comments.md).

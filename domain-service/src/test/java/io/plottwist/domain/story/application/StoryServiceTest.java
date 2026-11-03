@@ -45,10 +45,6 @@ class StoryServiceTest {
         assertThrows(
                 StoryException.class, () -> service.create(author, new StoryContent("Valid", " ")))
             .reason());
-    assertEquals(
-        StoryException.Reason.INVALID_INPUT,
-        assertThrows(StoryException.class, () -> service.comment(id, author, "Bad\u0000text"))
-            .reason());
   }
 
   @Test
@@ -61,48 +57,6 @@ class StoryServiceTest {
       assertThrows(StoryException.class, () -> FeedCursor.decode(bad));
     assertThrows(
         StoryException.class, () -> service.feed(UUID.randomUUID(), false, false, null, 21));
-  }
-
-  @Test
-  void rejectsForeignCommentDeletion() {
-    UUID story = UUID.randomUUID(), comment = UUID.randomUUID(), author = UUID.randomUUID();
-    when(repository.commentAuthor(story, comment)).thenReturn(Optional.of(UUID.randomUUID()));
-    assertEquals(
-        StoryException.Reason.FORBIDDEN,
-        assertThrows(StoryException.class, () -> service.deleteComment(story, comment, author))
-            .reason());
-    verify(repository, never()).deleteComment(any(), any(), any());
-  }
-
-  @Test
-  void refusesForeignCommentEditsAndStaleVersions() {
-    UUID story = UUID.randomUUID(),
-        comment = UUID.randomUUID(),
-        author = UUID.randomUUID(),
-        other = UUID.randomUUID();
-    when(repository.findComment(story, comment))
-        .thenReturn(
-            Optional.of(
-                new StoryComment(
-                    comment, story, author, "Author", "Body", Instant.now(), Instant.now(), 0)));
-    assertEquals(
-        StoryException.Reason.FORBIDDEN,
-        assertThrows(
-                StoryException.class,
-                () -> service.updateComment(story, comment, other, 0, "Stolen"))
-            .reason());
-    verify(repository, never()).updateComment(any(), any(), eq(other), anyLong(), anyString());
-    assertEquals(
-        StoryException.Reason.VERSION_CHANGED,
-        assertThrows(
-                StoryException.class,
-                () -> service.updateComment(story, comment, author, 0, "New text"))
-            .reason());
-    assertEquals(
-        StoryException.Reason.INVALID_INPUT,
-        assertThrows(
-                StoryException.class, () -> service.updateComment(story, comment, author, 0, " "))
-            .reason());
   }
 
   private Story story(UUID id, UUID author) {

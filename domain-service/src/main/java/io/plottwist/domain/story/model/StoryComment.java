@@ -11,4 +11,11 @@ public record StoryComment(
     String body,
     Instant createdAt,
     Instant updatedAt,
-    long version) {}
+    long version,
+    UUID parentId,
+    UUID rootId,
+    String replyToAuthorName,
+    long likes,
+    boolean myLiked,
+    long replyCount,
+    boolean deleted) {}

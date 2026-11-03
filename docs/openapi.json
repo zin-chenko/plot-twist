@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.11.1",
+    "version": "1.12.0",
     "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT. Private one-to-one chats are restricted to their two verified participants. Native authenticated JSON WebSocket /ws/chats delivers commands and live invalidations; REST keeps paginated history."
   },
   "servers": [
@@ -1275,7 +1275,7 @@
       ],
       "get": {
         "operationId": "listStoryComments",
-        "summary": "Read comments, newest first",
+        "summary": "Read root comments by date or popularity",
         "security": [
           {
             "oauth": [
@@ -1323,13 +1323,26 @@
         },
         "parameters": [
           {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "newest",
+                "oldest",
+                "popular"
+              ],
+              "default": "newest"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "schema": {
               "type": "integer",
-              "default": 10,
               "minimum": 1,
-              "maximum": 20
+              "maximum": 20,
+              "default": 10
             }
           },
           {
@@ -1337,15 +1350,16 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "maxLength": 180
+              "maxLength": 400
             },
-            "description": "Opaque nextCursor from the previous page. Newest first; no offsets."
+            "description": "Opaque nextCursor from this same viewer/story/sort/thread. Reset after changing sort."
           }
-        ]
+        ],
+        "description": "Only roots; replies are separately paginated. newest (default) and oldest use keyset (createdAt,id). popular snapshots up to 500 roots ordered by likes descending, then createdAt/id descending, for 15 minutes. Likes/edits do not reorder the current popular snapshot; counters remain current. Start without cursor to re-rank. Every cursor is bound to viewer, story, sort and thread; incompatible/expired cursors return 400. Deleted roots with live replies remain as placeholders; empty deleted threads are hidden."
       },
       "post": {
         "operationId": "createStoryComment",
-        "summary": "Write a comment as the verified account",
+        "summary": "Write a root comment or reply as the verified account",
         "security": [
           {
             "oauth": [
@@ -1402,11 +1416,12 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommentInput"
+                "$ref": "#/components/schemas/NewCommentInput"
               }
             }
           }
-        }
+        },
+        "description": "body is plain text up to 2000 UTF-16 units. Omit parentId for a root; set it to any live comment/reply in the same published story for a reply. authorId/rootId are computed server-side. Cross-story/deleted targets return 404."
       }
     },
     "/api/v1/stories/{id}/comments/{commentId}": {
@@ -1462,7 +1477,8 @@
           "503": {
             "description": "Data service unavailable"
           }
-        }
+        },
+        "description": "Author only, including replies. A leaf without child rows is removed. A parent with replies is replaced by deleted=true, empty body and zero likes, without deleting others’ replies. Deleted comments cannot be edited/liked/replied to directly; a live descendant remains a valid target. Story.commentCount excludes deleted placeholders."
       },
       "get": {
         "operationId": "getStoryComment",
@@ -1516,7 +1532,8 @@
           "503": {
             "description": "Data service unavailable"
           }
-        }
+        },
+        "description": "Read current counters, myLiked and text version. A deleted parent with a visible discussion may return an empty-body placeholder; a removed leaf returns 404."
       },
       "put": {
         "operationId": "updateStoryComment",
@@ -1598,7 +1615,8 @@
           "428": {
             "description": "If-Match required"
           }
-        }
+        },
+        "description": "Edit body only; parentId/rootId cannot be changed. The comment author is required. Likes do not advance the text ETag. Deleted comments return 404."
       }
     },
     "/api/v1/stories/{id}/author/photo": {
@@ -3094,6 +3112,231 @@
           }
         }
       }
+    },
+    "/api/v1/stories/{id}/comments/{commentId}/replies": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "commentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listCommentReplies",
+        "summary": "Read the replies of a root comment",
+        "security": [
+          {
+            "oauth": [
+              "api.read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentPage"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 400
+            },
+            "description": "Opaque nextCursor from this same viewer/story/sort/thread. Reset after changing sort."
+          }
+        ],
+        "description": "Flat chronological thread (oldest first), including replies to replies. parentId identifies the immediate target. commentId must be a root; a reply ID is invalid. Cursor is bound to viewer, story and this root. No recursive tree payload. Deleted parent placeholders can appear; deleted text is never returned."
+      }
+    },
+    "/api/v1/stories/{id}/comments/{commentId}/like": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "commentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "likeComment",
+        "summary": "Set your like on a comment or reply",
+        "description": "No request body. Idempotent per (comment, verified JWT account); self-likes are allowed. Returns current comment DTO. Deleted/unavailable comments return 404. Cannot set another account’s like or a caller-supplied count. Text version is unchanged.",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comment",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted comment version for If-Match."
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryComment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "unlikeComment",
+        "summary": "Remove your like on a comment or reply",
+        "description": "No request body. Idempotent per (comment, verified JWT account); self-likes are allowed. Returns current comment DTO. Deleted/unavailable comments return 404. Cannot set another account’s like or a caller-supplied count. Text version is unchanged.",
+        "security": [
+          {
+            "oauth": [
+              "api.write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comment",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted comment version for If-Match."
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryComment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID, text, page size/cursor or unsupported fields"
+          },
+          "401": {
+            "description": "Missing or invalid access token"
+          },
+          "403": {
+            "description": "Missing scope/verified account, or content belongs to another author"
+          },
+          "404": {
+            "description": "Story/comment not found"
+          },
+          "429": {
+            "description": "Gateway rate limit exceeded"
+          },
+          "503": {
+            "description": "Data service unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3448,7 +3691,8 @@
           },
           "commentCount": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "All live comments and replies on the story, excluding deleted parent placeholders."
           },
           "authorPhotoSha256": {
             "type": [
@@ -3501,7 +3745,14 @@
           "body",
           "createdAt",
           "version",
-          "updatedAt"
+          "updatedAt",
+          "parentId",
+          "rootId",
+          "replyToAuthorName",
+          "likes",
+          "myLiked",
+          "replyCount",
+          "deleted"
         ],
         "properties": {
           "id": {
@@ -3523,7 +3774,7 @@
           },
           "body": {
             "type": "string",
-            "minLength": 1,
+            "minLength": 0,
             "maxLength": 2000
           },
           "createdAt": {
@@ -3537,8 +3788,50 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Immediate parent, null for a root"
+          },
+          "rootId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Root of the flattened thread, null for a root"
+          },
+          "replyToAuthorName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public nickname of the parent author, or a deleted-parent label"
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "myLiked": {
+            "type": "boolean"
+          },
+          "replyCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "All live replies for a root; immediate live children for a reply"
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "Parent placeholder after deletion: empty body, zero likes, controls disabled"
           }
-        }
+        },
+        "description": "A root comment or a reply. Counts/like state are current. Text version changes only on edits/deletion, not likes. Deleted parents preserve the discussion while erasing their body."
       },
       "CommentInput": {
         "type": "object",
@@ -4380,6 +4673,28 @@
           },
           "detail": {
             "type": "string"
+          }
+        }
+      },
+      "NewCommentInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Optional parent in this same story. Server computes rootId; a reply can target another live reply."
           }
         }
       }

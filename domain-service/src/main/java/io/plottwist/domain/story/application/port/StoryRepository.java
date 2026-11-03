@@ -24,17 +24,5 @@ public interface StoryRepository {
 
   void react(UUID story, UUID account, int value);
 
-  List<StoryComment> comments(UUID story, PagePosition before, int limit);
-
-  StoryComment comment(UUID id, UUID story, UUID author, String body);
-
-  Optional<StoryComment> findComment(UUID story, UUID comment);
-
-  boolean updateComment(UUID story, UUID comment, UUID author, long version, String body);
-
   Optional<AuthorPhoto> authorPhoto(UUID story);
-
-  Optional<UUID> commentAuthor(UUID story, UUID comment);
-
-  boolean deleteComment(UUID story, UUID comment, UUID author);
 }

@@ -80,49 +80,6 @@ public class StoryService {
     return get(id, account);
   }
 
-  public FeedPage<StoryComment> comments(UUID id, UUID viewer, String cursor, int limit) {
-    checkLimit(limit);
-    get(id, viewer);
-    var rows = stories.comments(id, FeedCursor.decode(cursor), limit + 1);
-    var items = List.copyOf(rows.subList(0, Math.min(limit, rows.size())));
-    var last = items.isEmpty() ? null : items.getLast();
-    return new FeedPage<>(
-        items, rows.size() > limit ? FeedCursor.encode(last.createdAt(), last.id()) : null);
-  }
-
-  @Transactional
-  public StoryComment comment(UUID id, UUID author, String body) {
-    body = text(body, 2000);
-    lock(id);
-    return stories.comment(UUID.randomUUID(), id, author, body);
-  }
-
-  public StoryComment getComment(UUID story, UUID comment) {
-    return stories
-        .findComment(story, comment)
-        .orElseThrow(() -> new StoryException(NOT_FOUND, "Comment not found"));
-  }
-
-  @Transactional
-  public StoryComment updateComment(
-      UUID story, UUID comment, UUID author, long version, String body) {
-    own(getComment(story, comment).authorId(), author);
-    if (!stories.updateComment(story, comment, author, version, text(body, 2000)))
-      throw new StoryException(VERSION_CHANGED, "Comment changed; reload before editing");
-    return getComment(story, comment);
-  }
-
-  @Transactional
-  public void deleteComment(UUID story, UUID comment, UUID author) {
-    var owner =
-        stories
-            .commentAuthor(story, comment)
-            .orElseThrow(() -> new StoryException(NOT_FOUND, "Comment not found"));
-    own(owner, author);
-    if (!stories.deleteComment(story, comment, author))
-      throw new StoryException(NOT_FOUND, "Comment not found");
-  }
-
   private void lock(UUID id) {
     if (!stories.lockForInteraction(id)) throw new StoryException(NOT_FOUND, "Story not found");
   }

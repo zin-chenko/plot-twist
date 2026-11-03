@@ -16,8 +16,8 @@
 | PUT | `/api/v1/stories/{id}` | Изменить свою; тот же JSON и `If-Match` |
 | DELETE | `/api/v1/stories/{id}` | Удалить свою с `If-Match` |
 | PUT | `/api/v1/stories/{id}/reaction` | `{ "value": 1 }` — лайк, `-1` — дизлайк, `0` — снять |
-| GET | `/api/v1/stories/{id}/comments?limit=10&cursor=…` | Комментарии, новые сверху |
-| POST | `/api/v1/stories/{id}/comments` | `{ "body": "…" }` |
+| GET | `/api/v1/stories/{id}/comments?limit=10&cursor=…` | Корневые комментарии, sort=newest/oldest/popular |
+| POST | `/api/v1/stories/{id}/comments` | `{ "body": "…", "parentId": "…" }`; parentId необязателен |
 | GET | `/api/v1/stories/{id}/comments/{commentId}` | Комментарий и текущий ETag |
 | PUT | `/api/v1/stories/{id}/comments/{commentId}` | Изменить свой: `{ "body": "…" }` и `If-Match` |
 | DELETE | `/api/v1/stories/{id}/comments/{commentId}` | Удалить свой комментарий |
@@ -74,3 +74,5 @@ V3 добавляет `version` и `updated_at` комментария, запо
 ## Лента подписок
 
 Вкладка «Подписки» (`/feed?view=following`) использует `GET /api/v1/stories/following` и показывает одобренные истории авторов, на которых подписан JWT-пользователь. [Подписка/отписка и семантика ленты](follows.md).
+
+Лайки комментариев, сортировки, ответы на ответы и сохранение веток при удалении родителя добавлены миграцией V13. [Подробный контракт и правила](comments.md).

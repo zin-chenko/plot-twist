@@ -61,10 +61,14 @@ public class SecurityConfig {
                         HttpMethod.PUT,
                         "/api/v1/stories/*",
                         "/api/v1/stories/*/reaction",
-                        "/api/v1/stories/*/comments/*")
+                        "/api/v1/stories/*/comments/*",
+                        "/api/v1/stories/*/comments/*/like")
                     .hasAuthority("SCOPE_api.write")
                     .requestMatchers(
-                        HttpMethod.DELETE, "/api/v1/stories/*", "/api/v1/stories/*/comments/*")
+                        HttpMethod.DELETE,
+                        "/api/v1/stories/*",
+                        "/api/v1/stories/*/comments/*",
+                        "/api/v1/stories/*/comments/*/like")
                     .hasAuthority("SCOPE_api.write")
                     .anyRequest()
                     .denyAll())

@@ -24,6 +24,7 @@ public class StoryGateway {
     "/{id}",
     "/{id}/comments",
     "/{id}/comments/{commentId}",
+    "/{id}/comments/{commentId}/replies",
     "/{id}/author/photo"
   })
   ResponseEntity<byte[]> get(@AuthenticationPrincipal Jwt jwt, HttpServletRequest request) {
@@ -46,7 +47,12 @@ public class StoryGateway {
     return relay(jwt, request, body);
   }
 
-  @DeleteMapping({"/{id}", "/{id}/comments/{commentId}"})
+  @PutMapping("/{id}/comments/{commentId}/like")
+  ResponseEntity<byte[]> like(@AuthenticationPrincipal Jwt jwt, HttpServletRequest request) {
+    return relay(jwt, request, null);
+  }
+
+  @DeleteMapping({"/{id}", "/{id}/comments/{commentId}", "/{id}/comments/{commentId}/like"})
   ResponseEntity<byte[]> delete(@AuthenticationPrincipal Jwt jwt, HttpServletRequest request) {
     return relay(jwt, request, null);
   }

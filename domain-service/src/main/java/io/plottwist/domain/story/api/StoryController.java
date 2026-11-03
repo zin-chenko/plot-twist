@@ -106,63 +106,6 @@ public class StoryController {
     return response(stories.react(id, AccountIdentity.require(jwt), body.value()));
   }
 
-  @GetMapping("/{id}/comments")
-  ResponseEntity<FeedPage<StoryComment>> comments(
-      @AuthenticationPrincipal Jwt jwt,
-      @PathVariable UUID id,
-      @RequestParam(required = false) String cursor,
-      @RequestParam(defaultValue = "10") int limit) {
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.noStore())
-        .body(stories.comments(id, AccountIdentity.require(jwt), cursor, limit));
-  }
-
-  @PostMapping(value = "/{id}/comments", consumes = MediaType.APPLICATION_JSON_VALUE)
-  ResponseEntity<StoryComment> comment(
-      @AuthenticationPrincipal Jwt jwt,
-      @PathVariable UUID id,
-      @Valid @RequestBody CommentRequest body) {
-    var comment = stories.comment(id, AccountIdentity.require(jwt), body.body());
-    return ResponseEntity.created(URI.create("/api/v1/stories/" + id + "/comments/" + comment.id()))
-        .cacheControl(CacheControl.noStore())
-        .eTag(Long.toString(comment.version()))
-        .body(comment);
-  }
-
-  @GetMapping("/{id}/comments/{commentId}")
-  ResponseEntity<StoryComment> getComment(
-      @AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @PathVariable UUID commentId) {
-    stories.get(id, AccountIdentity.require(jwt));
-    var comment = stories.getComment(id, commentId);
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.noStore())
-        .eTag(Long.toString(comment.version()))
-        .body(comment);
-  }
-
-  @PutMapping(value = "/{id}/comments/{commentId}", consumes = MediaType.APPLICATION_JSON_VALUE)
-  ResponseEntity<StoryComment> editComment(
-      @AuthenticationPrincipal Jwt jwt,
-      @PathVariable UUID id,
-      @PathVariable UUID commentId,
-      @RequestHeader(value = "If-Match", required = false) String match,
-      @Valid @RequestBody CommentRequest body) {
-    var comment =
-        stories.updateComment(
-            id, commentId, AccountIdentity.require(jwt), version(match), body.body());
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.noStore())
-        .eTag(Long.toString(comment.version()))
-        .body(comment);
-  }
-
-  @DeleteMapping("/{id}/comments/{commentId}")
-  ResponseEntity<Void> deleteComment(
-      @AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @PathVariable UUID commentId) {
-    stories.deleteComment(id, commentId, AccountIdentity.require(jwt));
-    return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
-  }
-
   private static ResponseEntity<Story> response(Story story) {
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(tag(story)).body(story);
   }
