@@ -145,15 +145,20 @@ public class JdbcRecommendationStore implements RecommendationStore {
   }
 
   public List<BatchPosition> page(UUID viewer, UUID batch, int after, int limit) {
+    // Eligibility is frozen when the batch is built. Live checks still protect ownership,
+    // expiration and the exact approved story version, without reshuffling after a reaction.
     return jdbc.query(
-        "SELECT s.id,i.position FROM recommendation_items i JOIN stories s ON s.id=i.story_id AND s.published_version=i.story_version WHERE i.batch_id=? AND i.position>? AND "
-            + ELIGIBLE
-            + " ORDER BY i.position LIMIT ?",
+        """
+        SELECT s.id,i.position FROM recommendation_items i
+        JOIN recommendation_batches b ON b.id=i.batch_id AND b.account_id=? AND b.expires_at>now()
+        JOIN stories s ON s.id=i.story_id AND s.published_version=i.story_version
+        WHERE i.batch_id=? AND i.position>? AND s.author_id<>?
+        ORDER BY i.position LIMIT ?
+        """,
         (row, n) -> new BatchPosition(row.getObject("id", UUID.class), row.getInt("position")),
+        viewer,
         batch,
         after,
-        viewer,
-        viewer,
         viewer,
         limit);
   }

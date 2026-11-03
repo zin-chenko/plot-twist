@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Plot Twist API",
-    "version": "1.11.0",
+    "version": "1.11.1",
     "description": "Verified-user profiles and a shared authenticated story feed. OAuth2 Authorization Code + PKCE; machine grants cannot read user content. Story/comment authors are derived only from the verified JWT. Private one-to-one chats are restricted to their two verified participants. Native authenticated JSON WebSocket /ws/chats delivers commands and live invalidations; REST keeps paginated history."
   },
   "servers": [
@@ -1674,7 +1674,7 @@
       "get": {
         "operationId": "getRecommendations",
         "summary": "Personalized semantic recommendations with an explicit cold-start/fallback mode",
-        "description": "Qdrant retrieves candidates from locally computed E5 vectors. PostgreSQL rechecks visibility, story revision, current ratings and reading exclusions; no online inference is performed by this endpoint.",
+        "description": "Qdrant retrieves candidates from locally computed E5 vectors. When creating a batch, PostgreSQL excludes own, rated and recently completed stories and rechecks approved versions. Existing snapshot pages retain their selected IDs/order after new reactions or reads, while enforcing the batch owner/expiry and current approved story versions. Items include live reaction state and counters. A new first-page request after feedback uses the new signal revision and excludes already rated/read items. refresh=true bypasses the first-page cache. No online inference is performed by this endpoint.",
         "parameters": [
           {
             "name": "limit",
@@ -1693,7 +1693,7 @@
               "type": "string",
               "maxLength": 100
             },
-            "description": "Private snapshot cursor, expires after 15 minutes; never reuse across accounts."
+            "description": "Private snapshot cursor, expires after 15 minutes; never reuse across accounts. New reactions/read signals do not remove IDs from this existing snapshot; deletion and approved-version changes can remove unavailable items."
           },
           {
             "name": "refresh",

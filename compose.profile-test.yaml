@@ -21,6 +21,7 @@ services:
       args: {MODULE: domain-service}
     environment:
       PUBLIC_PROFILE_INTEGRATION: "true"
+      RECOMMENDATION_SNAPSHOT_INTEGRATION: "true"
       DB_URL: jdbc:postgresql://postgres:5432/profiles
       DB_USER: plot_twist
       DB_PASSWORD: plot_twist_local

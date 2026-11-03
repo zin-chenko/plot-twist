@@ -106,6 +106,14 @@ def check():
         )
         request("PUT", route + "/" + created[0] + "/reaction", {"value": 1}, reader)
         request("PUT", route + "/" + created[2] + "/reaction", {"value": -1}, reader)
+        stable_page, _ = request(
+            "GET",
+            "/api/v1/recommendations?limit=2&cursor=" + quote(page["nextCursor"]),
+            token=reader,
+        )
+        assert [x["id"] for x in stable_page["items"]] == [
+            x["id"] for x in next_page["items"]
+        ], "Reactions changed the active recommendation snapshot"
         if "--semantic" in sys.argv:
             deadline = time.monotonic() + 180
             identifiers = ",".join(
