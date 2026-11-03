@@ -51,10 +51,10 @@ Flyway **V13** добавляет связи веток, soft-delete marker, cou
 
 ```sh
 git pull --ff-only
-docker compose up -d --build --no-deps --wait domain-service api-service gateway
+docker compose up -d --build --force-recreate --wait --wait-timeout 180 domain-service api-service gateway
 ```
 
-Существующие зависимости стека должны работать. V13 применяется автоматически, volumes удалять не нужно. **api-service обновляется вместе с domain-service**, включая обе реплики, иначе новые маршруты лайков/ответов будут возвращать 404. Gateway пересобирается также для актуального `/openapi.json`.
+Команда предназначена для локального Compose: она запускает зависимости, включая PostgreSQL и RabbitMQ, и пересоздаёт обновляемые сервисы, в том числе ранее unhealthy. `--no-deps` здесь не нужен: он пропускает запуск зависимостей. V13 применяется автоматически, существующие volumes сохраняются. **api-service обновляется вместе с domain-service**, включая обе реплики, иначе новые маршруты лайков/ответов будут возвращать 404. Gateway пересобирается также для актуального `/openapi.json`. При `UnknownHostException: postgres` см. [восстановление подключения к PostgreSQL](../README.md#ошибка-unknownhostexception-postgres).
 
 Затем обновите frontend `plot-twist-web`, ветка main: `git pull --ff-only` и перезапуск/обновление `npm start`; для Docker пересоберите web. Новых секретов и дополнительных контейнеров нет.
 

@@ -78,11 +78,10 @@ GET требует `api.read`, POST/PUT — `api.write`, все требуют �
 
 ```sh
 git pull --ff-only
-docker compose up -d --wait rabbitmq
-docker compose up -d --build --no-deps --wait domain-service api-service gateway
+docker compose up -d --build --force-recreate --wait --wait-timeout 180 domain-service api-service gateway
 ```
 
-Зависимости существующего стека должны уже работать. V11/V12 применяются автоматически, существующие данные сохраняются; не удаляйте volumes. Gateway пересобирается для обновления `/openapi.json`. Используется существующий RabbitMQ, новых типов инфраструктуры/секретов нет. При первом запуске broker дождитесь его healthcheck. Для production задайте `CHAT_ALLOWED_ORIGINS=https://app.example.com,https://api.example.com` (точные browser origins, без путей, wildcard и завершающего `/`). Пример env обновлён; произвольные origins не разрешаются. Для нестандартного dev-порта добавьте его origin в этот список. Обновлены Upgrade/Connection и таймауты backend Nginx и frontend Nginx; CSP разрешает WS/WSS только текущего host.
+Команда предназначена для локального Compose: зависимости, включая PostgreSQL и RabbitMQ, запускаются автоматически; обновляемые сервисы пересоздаются. Не добавляйте `--no-deps`: он пропускает запуск зависимостей. V11/V12 применяются автоматически, существующие данные сохраняются; не удаляйте volumes. Gateway пересобирается для обновления `/openapi.json`. Используется существующий RabbitMQ, новых типов инфраструктуры/секретов нет. При `UnknownHostException: postgres` см. [восстановление подключения к PostgreSQL](../README.md#ошибка-unknownhostexception-postgres). Для production задайте `CHAT_ALLOWED_ORIGINS=https://app.example.com,https://api.example.com` (точные browser origins, без путей, wildcard и завершающего `/`). Пример env обновлён; произвольные origins не разрешаются. Для нестандартного dev-порта добавьте его origin в этот список. Обновлены Upgrade/Connection и таймауты backend Nginx и frontend Nginx; CSP разрешает WS/WSS только текущего host.
 
 Затем в отдельном `plot-twist-web`, ветка main: `git pull --ff-only`, `npm ci`, перезапуск `npm start`; при Docker-сборке frontend пересоберите его образ.
 
